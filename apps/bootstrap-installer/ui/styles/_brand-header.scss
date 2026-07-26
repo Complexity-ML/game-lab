@@ -1,0 +1,43 @@
+.brand-header { display: flex; align-items: center; gap: 13px; }
+.brand-header__identity span,
+.eyebrow {
+  color: var(--text-dim);
+  font: 600 10px/1.2 var(--mono);
+  letter-spacing: .18em;
+}
+.brand-header h1 { margin: 3px 0 0; font-size: 19px; letter-spacing: -.02em; }
+.brand-mark {
+  position: relative;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(251, 191, 36, .62);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(245, 158, 11, .32), rgba(234, 88, 12, .24));
+}
+.brand-mark i {
+  position: absolute;
+  left: 10px;
+  width: 21px;
+  height: 4px;
+  border-radius: 4px;
+  background: #fbbf24;
+  box-shadow: 0 0 14px rgba(249, 115, 22, .42);
+}
+.brand-mark i:nth-child(1) { top: 10px; }
+.brand-mark i:nth-child(2) { top: 19px; width: 16px; }
+.brand-mark i:nth-child(3) { top: 28px; width: 12px; }
+.brand-mark b {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  color: #fff7ed;
+  border: 1px solid rgba(255, 255, 255, .74);
+  border-radius: 50%;
+  background: #c2410c;
+  font: 800 9px/1 sans-serif;
+}
