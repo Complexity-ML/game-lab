@@ -1,54 +1,167 @@
 # GAME LAB
 
-GAME LAB is a human-reviewed visual studio for private game-server operations and governed game agents.
+[![Tests](https://github.com/Complexity-ML/game-lab/actions/workflows/fast-pr.yml/badge.svg)](https://github.com/Complexity-ML/game-lab/actions/workflows/fast-pr.yml)
+[![Tauri Setup](https://github.com/Complexity-ML/game-lab/actions/workflows/setup-preview.yml/badge.svg)](https://github.com/Complexity-ML/game-lab/actions/workflows/setup-preview.yml)
+[![Release](https://github.com/Complexity-ML/game-lab/actions/workflows/macos-release.yml/badge.svg)](https://github.com/Complexity-ML/game-lab/actions/workflows/macos-release.yml)
+[![Latest release](https://img.shields.io/github/v/release/Complexity-ML/game-lab?label=stable)](https://github.com/Complexity-ML/game-lab/releases/latest)
 
-It uses the same graph, versioning, atomic validation and relational SQLite foundation as DATA LAB and SAM LAB, with two game-specific cards:
+GAME LAB is a local-first visual studio for private game-server operations and governed game agents. It combines an Electron workbench, a relational SQLite ledger and a small Tauri Setup that builds the native application locally for the current computer.
+
+Two first-class stickers extend the shared LAB graph:
 
 - **Game Server** — an owned or explicitly authorized FiveM, RedM or generic server with bounded health, player and resource telemetry.
-- **Game Agent** — an NPC or test player constrained to a private server, allowlisted actions and an immediate emergency stop.
+- **Game Agent** — an NPC, test player or governed operator constrained to a private server, allowlisted actions and an immediate emergency stop.
+
+## How it works
+
+```mermaid
+flowchart LR
+  O["Game operator"] --> G["GAME LAB graph"]
+  G --> S["Game Server"]
+  G --> A["Game Agent"]
+  S --> T["Bounded telemetry"]
+  A --> R["Replay evidence"]
+  T --> X["Analysis & risk"]
+  R --> X
+  X --> H{"Human Review"}
+  H -->|Approved| V["Safety validation"]
+  H -->|Rejected| B["Bounded repair"]
+  V --> C["Reviewed command or result"]
+  C --> M["Live Monitor"]
+  M --> G
+```
+
+Every material action stays visible in the graph. The agent can investigate and propose, while the host keeps authorization, review, rollback and post-condition validation deterministic.
 
 ## Included demos
 
-### FiveM Server Ops
+Open **Settings → Examples** and choose one of the two ready-to-run canvases.
 
-Diagnoses one failed resource, records affected test players, asks a human to approve a single-resource restart, validates recovery and returns to monitoring.
+```mermaid
+flowchart TB
+  subgraph OPS["FiveM Server Ops"]
+    S1["Private FiveM server"] --> S2["Health monitor"]
+    S2 --> S3["Incident analysis"]
+    S3 --> S4["Operational risk"]
+    S4 --> S5["Human Review"]
+    S5 --> S6["Single-resource restart"]
+    S6 --> S7["Recovery validation"]
+  end
 
-### Agent Arena
+  subgraph ARENA["Agent Arena"]
+    A1["Isolated FiveM shard"] --> A2["Game Agent"]
+    A2 --> A3["Replay scoring"]
+    A3 --> A4["Safety risk"]
+    A4 --> A5["Human Review"]
+    A5 --> A6["Safety gate"]
+    A6 --> A7["Agent result"]
+  end
+```
 
-Runs an AI test driver on an isolated FiveM shard, scores its replay, materializes safety risk, pauses for Human Review and validates the policy before another private run.
+- **FiveM Server Ops** diagnoses one failed resource, records affected test players, asks a human to approve a single-resource restart, validates recovery and returns to monitoring.
+- **Agent Arena** runs an AI test driver on an isolated shard, scores its replay, materializes safety risk and validates the policy before another private run.
 
-Open **Settings → Examples** to load either workflow.
+## Install on macOS
+
+The recommended command downloads the checksum-verified Tauri helper for Apple Silicon or Intel, installs it for the current user and opens **GAME LAB Setup**:
+
+```bash
+curl -fsSL https://github.com/Complexity-ML/game-lab/releases/download/setup-latest/install-game-lab-macos.sh | bash
+```
+
+To download the Tauri Setup DMG instead:
+
+```bash
+SETUP_ARCH=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo x64); curl -fL "https://github.com/Complexity-ML/game-lab/releases/download/setup-latest/GAME-LAB-Setup-${SETUP_ARCH}.dmg" -o /tmp/GAME-LAB-Setup.dmg && open /tmp/GAME-LAB-Setup.dmg
+```
+
+To build the newest `main` revision instead of the latest stable release:
+
+```bash
+curl -fsSL https://github.com/Complexity-ML/game-lab/releases/download/setup-latest/install-game-lab-macos.sh | bash -s -- --channel main
+```
+
+Setup is intentionally source-first: it downloads a managed Node.js runtime once, fetches the selected immutable source, runs the locked local build, installs `GAME LAB.app` in `~/Applications`, replaces it atomically and keeps one rollback copy. The Setup preview is unsigned and unnotarized, so macOS may ask for explicit approval.
+
+No Apple certificate or repository secret is required for this path. GitHub Actions only builds the small Tauri bootstrap artifacts; the Electron application is built locally by Setup for the current machine.
+
+## Release model
+
+- **Stable** resolves the latest published `v*` source release.
+- **Main** resolves the current `main` commit and is explicitly opt-in.
+- [`setup-latest`](https://github.com/Complexity-ML/game-lab/releases/tag/setup-latest) always exposes the current Tauri Setup downloads.
+- The stable source release and Tauri Setup use only GitHub's built-in workflow token; no signing secret is embedded in the repository.
 
 ## Safety boundary
 
-GAME LAB is designed for servers you own or are explicitly authorized to operate. It does not support public-server automation, anti-cheat bypass, harassment, credential extraction or private raw-player-data collection. Material server commands and agent-policy promotion require Human Review, rollback and fresh post-condition validation.
+GAME LAB is designed for servers you own or are explicitly authorized to operate. It does not support public-server automation, anti-cheat bypass, harassment, credential extraction or private raw-player-data collection.
 
-## Development
+- Server commands are allowlisted and reviewed.
+- Agent actions are limited to private evaluation environments.
+- Human Review protects material commands and policy promotion.
+- Emergency stop is a mandatory Game Agent contract.
+- Every committed graph revision is restorable.
+- Closing GAME LAB stops monitors and agent actions; no hidden service is installed.
+
+## Technology
+
+- React 19, TypeScript, Vite and React Flow
+- Electron desktop workbench
+- Relational SQLite workspace and revision ledger
+- Tauri 2 source-first Setup
+- Optional bounded catalog and MCP connectors
+- Vitest and Rust validation
+
+Workspace data lives in `game-lab.sqlite`. Graph nodes, edges, versions, evidence and checkpoints are stored in normalized tables rather than JSON payload blobs.
+
+## Run locally
+
+Requirements: Node.js 20+ and npm.
 
 ```bash
 npm install
+npm run electron:dev
+```
+
+Renderer only:
+
+```bash
 npm run dev
 ```
 
-Checks:
+Validation:
 
 ```bash
 npm test
 npm run build
 npm run build:electron
+cargo check --manifest-path apps/bootstrap-installer/src-tauri/Cargo.toml
 ```
 
-Workspace data is persisted in `game-lab.sqlite` using the relational schema shared with the other LAB applications. Graph nodes, edges, versions, evidence and checkpoints are stored in normalized tables rather than JSON payload blobs.
-
-## Desktop packaging
-
-The Electron application and the Tauri bootstrap installer retain separate build paths:
+Run the Tauri Setup locally:
 
 ```bash
-npm run package:mac:release
-npm run package:win:ci
-npm run setup:build:mac
-npm run setup:build:win
+npm install --prefix apps/bootstrap-installer
+npm run setup:dev
 ```
 
-The configured release repository is `Complexity-ML/game-lab`.
+Build only the small Setup package:
+
+```bash
+npm run setup:build:mac
+```
+
+## Project structure
+
+```text
+electron/                    Electron shell, SQLite and secure IPC boundary
+apps/bootstrap-installer/    Tauri Setup for Stable and Main
+src/components/              Cards, panels, settings and review UI
+src/domain/                  Game graph, reports, contracts and presets
+src/hooks/                   Player and workspace orchestration
+src/views/                   Library, canvas, inspector and results
+```
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).

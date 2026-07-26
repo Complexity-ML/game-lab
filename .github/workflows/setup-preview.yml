@@ -1,6 +1,14 @@
 name: Build GAME LAB Setup installers
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/setup-preview.yml'
+      - 'apps/bootstrap-installer/**'
+      - 'install-game-lab-macos.sh'
+      - 'package.json'
+      - 'package-lock.json'
   workflow_dispatch:
 
 permissions:

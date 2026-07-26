@@ -40,16 +40,16 @@ describe('macOS release configuration', () => {
     expect(packageJson.scripts['package:mac:release']).not.toContain('forceCodeSigning=false')
   })
 
-  it('requires immutable stable tags, Apple secrets and native verification in CI', () => {
+  it('publishes immutable stable source tags without repository signing secrets', () => {
     const workflow = readFileSync(join(root, '.github/workflows/macos-release.yml'), 'utf8')
     expect(workflow).toContain("tags: ['v*']")
     expect(workflow).toContain('workflow_dispatch:')
     expect(workflow).not.toContain('branches: [main]')
-    expect(workflow).toContain('MACOS_CERTIFICATE_P12')
-    expect(workflow).toContain('APPLE_API_KEY_P8')
-    expect(workflow).toContain('codesign --verify --deep --strict')
-    expect(workflow).toContain('spctl --assess --type execute')
-    expect(workflow).toContain('stapler validate')
+    expect(workflow).toContain('npm test')
+    expect(workflow).toContain('gh release create')
+    expect(workflow).toContain('--verify-tag')
+    expect(workflow).not.toContain('MACOS_CERTIFICATE_P12')
+    expect(workflow).not.toContain('APPLE_API_KEY_P8')
   })
 
   it('publishes the source-first Setup for native macOS and Windows runners', () => {
@@ -57,6 +57,7 @@ describe('macOS release configuration', () => {
     const setupCore = readFileSync(join(root, 'apps/bootstrap-installer/src-tauri/src/lib.rs'), 'utf8')
     const setupUi = readFileSync(join(root, 'apps/bootstrap-installer/ui/components/hero-section.js'), 'utf8')
     expect(workflow).toContain('workflow_dispatch:')
+    expect(workflow).toContain('branches: [main]')
     expect(workflow).toContain('runner: macos-15')
     expect(workflow).toContain('runner: macos-15-intel')
     expect(workflow).toContain('runner: windows-2022')
@@ -71,6 +72,14 @@ describe('macOS release configuration', () => {
     expect(setupCore).not.toContain('runtime:setup')
     expect(setupUi).toContain('Building Release')
     expect(setupUi).toContain('Building Main')
+  })
+
+  it('downloads GAME LAB Setup from the GAME LAB repository', () => {
+    const installer = readFileSync(join(root, 'install-game-lab-macos.sh'), 'utf8')
+    expect(installer).toContain('REPOSITORY="Complexity-ML/game-lab"')
+    expect(installer).toContain('RELEASE_TAG="setup-latest"')
+    expect(installer).toContain('shasum -a 256')
+    expect(installer).not.toContain('Complexity-ML/labo-sam')
   })
 
   it('builds a Windows installer and portable updater archive without weakening production signing', () => {

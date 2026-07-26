@@ -1016,6 +1016,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "game-lab-setup"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "flate2",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tauri",
+ "tauri-build",
+ "tempfile",
+ "zip",
+]
+
+[[package]]
 name = "gdk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2837,23 +2854,6 @@ name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
-
-[[package]]
-name = "game-lab-setup"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "flate2",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "tauri",
- "tauri-build",
- "tempfile",
- "zip",
-]
 
 [[package]]
 name = "same-file"
