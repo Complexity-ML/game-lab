@@ -13,8 +13,8 @@
     "test": "npm run build && node --test dist/**/*.node-test.js"
   },
   "dependencies": {
-    "minecraft-data": "https://github.com/Complexity-ML/node-minecraft-data-26.2/releases/download/complexity-26.2.2/minecraft-data-complexity-26.2.2.tgz",
-    "mineflayer": "https://github.com/Complexity-ML/mineflayer-26.2/releases/download/complexity-26.2.0/mineflayer-complexity-26.2.0.tgz",
+    "minecraft-data": "https://github.com/Complexity-ML/node-minecraft-data-26.2/releases/download/complexity-26.2.3/minecraft-data-complexity-26.2.3.tgz",
+    "mineflayer": "https://github.com/Complexity-ML/mineflayer-26.2/releases/download/complexity-26.2.1/mineflayer-complexity-26.2.1.tgz",
     "mineflayer-pathfinder": "2.4.5",
     "vec3": "0.2.0"
   },
