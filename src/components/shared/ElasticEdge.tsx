@@ -58,9 +58,13 @@ export function elasticHorizontalPath(sourceX: number, sourceY: number, targetX:
   // always leave a right-side source to the right and approach a left-side
   // target from the left. Backward and vertical links therefore form a small
   // elastic S instead of escaping into a giant square lane.
-  const tension = Math.max(42, Math.min(180, distanceX * 0.42))
-  const sourceLeadX = sourceX + endpointLead
-  const targetLeadX = targetX - endpointLead
+  // Keep short forward links inside the gap between both cards. A fixed
+  // 42 px minimum tension made control points cross whenever Auto Layout left
+  // roughly one handle-clearance between two cards.
+  const lead = Math.min(endpointLead, Math.max(2, distanceX * 0.18))
+  const tension = Math.min(180, Math.max(8, distanceX * 0.42), distanceX * 0.48)
+  const sourceLeadX = sourceX + lead
+  const targetLeadX = targetX - lead
   return `M ${sourceX} ${sourceY} L ${sourceLeadX} ${sourceY} C ${sourceX + tension} ${sourceY}, ${targetX - tension} ${targetY}, ${targetLeadX} ${targetY} L ${targetX} ${targetY}`
 }
 
@@ -122,7 +126,9 @@ function routedCablePath(options: ElasticRouteOptions, routeY: number) {
 }
 
 export function routeElasticCable(options: ElasticRouteOptions): ElasticRoute {
-  const needsTurnaround = options.targetX <= options.sourceX + endpointLead * 4
+  // A close target on the right is still a normal forward connection. Only a
+  // target at or behind the source needs an outside turnaround lane.
+  const needsTurnaround = options.targetX <= options.sourceX
   const obstacles = (options.obstacles ?? []).filter((obstacle) => (
     obstacle.id !== options.sourceId
     && obstacle.id !== options.targetId
