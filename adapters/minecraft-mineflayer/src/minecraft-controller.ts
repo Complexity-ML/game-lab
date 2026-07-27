@@ -3,8 +3,9 @@ import minecraftData from 'minecraft-data'
 import pathfinderModule from 'mineflayer-pathfinder'
 import { Vec3 } from 'vec3'
 import type { AdapterConfig } from './config.js'
+import { buildLocalNavigationMap } from './observation.js'
 import { actionTimeoutMs, isImmediateAction, type ActionArguments, type ActionCommand } from './protocol.js'
-import { defensiveResponse, defensiveRetreatTarget, isHostileMob, reconnectDelay } from './safety.js'
+import { defensiveResponse, defensiveRetreatTarget, isHostileMob, navigationRecoveryCell, reconnectDelay } from './safety.js'
 
 const faceVectors = {
   up: new Vec3(0, 1, 0),
@@ -356,6 +357,37 @@ export class MinecraftController {
     }
   }
 
+  private async recoverLocalMovement(target: Vec3, generation: number) {
+    const map = buildLocalNavigationMap(this.bot, 2)
+    const cell = navigationRecoveryCell(map.cells, target)
+    if (!cell) {
+      this.updateActivity('acting', 'Path blocked · no safe adjacent cell · controlled jump recovery')
+      await this.pulseJump()
+      return
+    }
+    const recoveryTarget = new Vec3(cell.position.x, cell.position.y, cell.position.z)
+    this.updateActivity('acting', `Path blocked · stepping through safe local cell ${cell.position.x},${cell.position.y},${cell.position.z}`)
+    let timeout: NodeJS.Timeout | undefined
+    try {
+      await Promise.race([
+        this.bot.pathfinder.goto(new goals.GoalNear(recoveryTarget.x, recoveryTarget.y, recoveryTarget.z, 0)),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => {
+            this.bot.pathfinder.setGoal(null)
+            reject(new Error('Safe local recovery step timed out'))
+          }, 5_000)
+        }),
+      ])
+    } catch {
+      this.bot.pathfinder.setGoal(null)
+      if (generation !== this.generation) throw new Error('Movement cancelled during local recovery')
+      await this.bot.lookAt(recoveryTarget.offset(0.5, 1, 0.5), true)
+      await this.pulseJump(700)
+    } finally {
+      if (timeout) clearTimeout(timeout)
+    }
+  }
+
   private async gotoWithRecovery(target: Vec3, generation: number, radius = 1) {
     let lastError: unknown
     for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -367,17 +399,17 @@ export class MinecraftController {
           new Promise<never>((_resolve, reject) => {
             timeout = setTimeout(() => {
               this.bot.pathfinder.setGoal(null)
-              reject(new Error(`Pathfinder attempt ${attempt} timed out after 12 seconds`))
-            }, 12_000)
+              reject(new Error(`Pathfinder attempt ${attempt} timed out after 10 seconds`))
+            }, 10_000)
           }),
         ])
         return
       } catch (error) {
         lastError = error
         this.bot.pathfinder.setGoal(null)
-        if (attempt === 2 || generation !== this.generation) break
-        this.updateActivity('acting', `Path blocked · automatic jump recovery ${attempt}/1`)
-        await this.pulseJump()
+        if (generation !== this.generation) throw new Error('Movement cancelled before path recovery')
+        if (attempt === 2) break
+        await this.recoverLocalMovement(target, generation)
         this.movements = this.safeMovements(this.bot)
         this.bot.pathfinder.setMovements(this.movements)
       } finally {

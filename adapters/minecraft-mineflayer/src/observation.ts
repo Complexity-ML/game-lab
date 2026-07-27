@@ -43,15 +43,17 @@ const navigationHazards = new Set([
   'soul_campfire', 'soul_fire', 'sweet_berry_bush', 'water', 'wither_rose',
 ])
 
-function localNavigationMap(bot: Bot, radius = 5) {
+export interface LocalNavigationCell {
+  offsetX: number
+  offsetZ: number
+  position: { x: number; y: number; z: number }
+  state: 'walkable' | 'blocked' | 'hazard' | 'drop'
+  ground?: string
+}
+
+export function buildLocalNavigationMap(bot: Bot, radius = 5) {
   const origin = bot.entity.position.floored()
-  const cells: Array<{
-    offsetX: number
-    offsetZ: number
-    position: { x: number; y: number; z: number }
-    state: 'walkable' | 'blocked' | 'hazard' | 'drop'
-    ground?: string
-  }> = []
+  const cells: LocalNavigationCell[] = []
   for (let offsetZ = -radius; offsetZ <= radius; offsetZ += 1) {
     for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
       const x = origin.x + offsetX
@@ -188,7 +190,7 @@ export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
       experienceLevel: bot.experience.level,
       inventory: bot.inventory.items().slice(0, 46).map((item) => ({ name: item.name, count: item.count, slot: item.slot })),
       nearbyBlocks: nearbyBlocks(bot),
-      localMap: localNavigationMap(bot),
+      localMap: buildLocalNavigationMap(bot),
     },
   }
 }
