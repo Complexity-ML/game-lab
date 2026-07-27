@@ -17,6 +17,10 @@ const autonomousEvasionActions = new Set<GameActionCommand['action']>(['move_to'
 
 export const autonomousMissionActionBudget = 96
 
+export function isRecoverableGameActionFailure(summary: string) {
+  return /timed out|timeout|movement blocked|pathfinder|digging|target may be blocked|unreachable|no path|not in the minecraft allowlist|not allowlisted/i.test(summary)
+}
+
 export function gameActionRequiresHumanReview(
   policy: AutonomyPolicy,
   action: GameActionCommand['action'],

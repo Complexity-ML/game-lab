@@ -11,7 +11,7 @@ import { policyForcesProposalReview } from '../domain/autonomy-policy'
 import { ensureAutonomousSystemCards } from '../domain/autonomous-system'
 import { classifyConnectivityFailure } from '../domain/connectivity'
 import { recordDiagnostic } from '../domain/diagnostics'
-import { autonomousMissionActionBudget, autonomousProposalFingerprint, gameActionRequiresHumanReview } from '../domain/game-autonomy'
+import { autonomousMissionActionBudget, autonomousProposalFingerprint, gameActionRequiresHumanReview, isRecoverableGameActionFailure } from '../domain/game-autonomy'
 import type { GameObservationSource } from '../domain/game-bridge'
 import type { IncidentEventInput, IncidentSummary } from '../domain/incidents'
 import { defaultBlankObjective, resolveAgentObjective } from '../domain/agent-objective'
@@ -385,7 +385,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
               if (playerSessionId.current !== expectedPlayerSessionId) return
             }
             const failureSummary = execution.receipt?.summary ?? 'Game Bridge failure'
-            const recoverableObstacle = /timed out|timeout|movement blocked|pathfinder|digging|target may be blocked|unreachable|no path/i.test(failureSummary)
+            const recoverableObstacle = isRecoverableGameActionFailure(failureSummary)
             if (recoverableObstacle && expectedPlayerSessionId !== undefined) {
               autonomousNoProgressCount.current += 1
               if (autonomousNoProgressCount.current <= 3) {
@@ -393,7 +393,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
                 recordActivity(`Action blocked · ${execution.receipt?.action ?? 'unknown'} · replanning from a fresh 5-block local map (${attempt}/3)`)
                 setActivity(`Minecraft route or target blocked · safe replan ${attempt}/3 from a fresh checkpoint`)
                 queueAutonomousStep(
-                  `The prior "${execution.receipt?.action ?? 'Minecraft'}" action failed safely: ${failureSummary}. Capture a fresh observation, inspect the 5-block localMap, and choose exactly one different safe recovery action. Prefer jump or an alternate reachable coordinate/target. Do not assume the failed action completed and do not repeat the same stale target unchanged.`,
+                  `The prior "${execution.receipt?.action ?? 'Minecraft'}" action failed safely: ${failureSummary}. Capture a fresh observation, inspect the 5-block localMap, and choose exactly one different safe recovery action. Prefer an alternate reachable coordinate or target. If the bridge rejected an unsupported or non-allowlisted action, do not propose that action again during this session. Do not assume the failed action completed and do not repeat the same stale target unchanged.`,
                   expectedPlayerSessionId,
                   500,
                 )
