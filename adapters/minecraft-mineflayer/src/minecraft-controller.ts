@@ -4,7 +4,7 @@ import pathfinderModule from 'mineflayer-pathfinder'
 import { Vec3 } from 'vec3'
 import type { AdapterConfig } from './config.js'
 import { planBotCrafting, type CraftingMotorPlan } from './crafting-motor.js'
-import { selectBestMiningTool } from './mining-tools.js'
+import { isLightNavigationObstruction, selectBestMiningTool } from './mining-tools.js'
 import { buildLocalNavigationMap } from './observation.js'
 import { ActionExecutionError, actionTimeoutMs, isImmediateAction, type ActionArguments, type ActionCommand, type ActionExecutionReport, type ActionMicroEvent } from './protocol.js'
 import { defensiveResponse, defensiveRetreatTarget, isHostileMob, navigationDescentCell, navigationRecoveryCell, reconnectDelay } from './safety.js'
@@ -142,7 +142,7 @@ export class MinecraftController {
     })
     bot.on('error', (error) => {
       if (connectionGeneration !== this.connectionGeneration) return
-      this.updateActivity('blocked', `Minecraft error: ${error.message}`.slice(0, 500))
+      this.updateActivity(this.connected ? 'observing' : 'blocked', `Minecraft error: ${error.message}`.slice(0, 500))
       if (!this.connected) this.scheduleReconnect()
     })
     return bot
@@ -178,7 +178,7 @@ export class MinecraftController {
         return
       }
       if (generation === this.generation) {
-        this.updateActivity('blocked', `${command.action} failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500))
+        this.updateActivity('observing', `${command.action} failed safely · fresh observation required: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500))
       }
       throw error
     })
@@ -200,7 +200,7 @@ export class MinecraftController {
             this.bot.stopDigging()
             this.bot.deactivateItem()
             const message = `${command.action} timed out after ${Math.round(deadlineMs / 1_000)} seconds · action cancelled`
-            this.updateActivity('blocked', message)
+            this.updateActivity('observing', `${message} · fresh observation required`)
             reject(new Error(message))
           }, deadlineMs)
         }),
@@ -518,8 +518,39 @@ export class MinecraftController {
     return found
   }
 
-  private bestMiningTool(block: NonNullable<ReturnType<Bot['blockAt']>>) {
-    return selectBestMiningTool(block, this.bot.inventory.items())
+  private bestMiningTool(block: NonNullable<ReturnType<Bot['blockAt']>>, requireHarvest = true) {
+    return selectBestMiningTool(block, this.bot.inventory.items(), requireHarvest)
+  }
+
+  private matchingBlockNear(target: Vec3, blockName: string, radius = 3) {
+    const matches: Array<NonNullable<ReturnType<Bot['blockAt']>>> = []
+    for (let y = -2; y <= 2; y += 1) {
+      for (let x = -radius; x <= radius; x += 1) {
+        for (let z = -radius; z <= radius; z += 1) {
+          const candidate = this.bot.blockAt(target.offset(x, y, z))
+          if (candidate?.name === blockName) matches.push(candidate)
+        }
+      }
+    }
+    return matches.sort((left, right) => left.position.distanceTo(target) - right.position.distanceTo(target))[0]
+  }
+
+  private async mineResolvedBlock(
+    block: NonNullable<ReturnType<Bot['blockAt']>>,
+    generation: number,
+    requireHarvest = true,
+  ) {
+    const selection = this.bestMiningTool(block, requireHarvest)
+    if (selection.item) await this.bot.equip(selection.item, 'hand')
+    await this.gotoWithRecovery(block.position, generation, 3)
+    if (generation !== this.generation) throw new Error('Mining cancelled before reaching the target')
+    await this.withOperationTimeout(
+      this.bot.dig(block),
+      Math.max(8_000, Math.min(30_000, selection.digTime + 5_000)),
+      `Mining ${block.name} timed out · target may be blocked or stale`,
+      () => this.bot.stopDigging(),
+    )
+    return selection
   }
 
   private craftingTable() {
@@ -686,37 +717,75 @@ export class MinecraftController {
       return
     }
     if (command.action === 'mine_block') {
-      const block = this.block(args)
+      let block
+      let obstruction: NonNullable<ReturnType<Bot['blockAt']>> | undefined
+      if (args.targetX !== undefined || args.targetY !== undefined || args.targetZ !== undefined) {
+        const target = coordinates(args)
+        const current = this.bot.blockAt(target)
+        if (!current) throw new Error('Target block is not loaded')
+        if (args.blockName && current.name !== args.blockName) {
+          const nearbyTarget = isLightNavigationObstruction(current.name)
+            ? this.matchingBlockNear(target, args.blockName, 3)
+            : undefined
+          if (!nearbyTarget) throw new Error(`Checkpoint mismatch: expected ${args.blockName}, found ${current.name}`)
+          obstruction = current
+          block = nearbyTarget
+        } else {
+          block = current
+        }
+      } else {
+        block = this.block(args)
+      }
+      const microActions: ActionMicroEvent[] = []
+      if (obstruction) {
+        const obstructionSelection = await this.mineResolvedBlock(obstruction, generation, false)
+        microActions.push({
+          id: 'mine-event-obstruction-tool',
+          kind: 'tool',
+          status: 'completed',
+          itemName: obstructionSelection.item?.name,
+          summary: obstructionSelection.item
+            ? `Selected ${obstructionSelection.item.name} to clear lightweight ${obstruction.name}`
+            : `Clearing lightweight ${obstruction.name} by hand`,
+        }, {
+          id: 'mine-event-obstruction',
+          kind: 'mine',
+          status: 'completed',
+          itemName: obstruction.name,
+          count: 1,
+          summary: `Cleared ${obstruction.name} obstructing confirmed nearby ${args.blockName}`,
+        })
+        const refreshedTarget = args.blockName ? this.matchingBlockNear(obstruction.position, args.blockName, 3) : undefined
+        if (!refreshedTarget) {
+          throw new ActionExecutionError(`Cleared ${obstruction.name}, but ${args.blockName} is no longer available nearby`, {
+            summary: `Lightweight obstruction cleared · fresh observation required before mining ${args.blockName}`,
+            microActions,
+          })
+        }
+        block = refreshedTarget
+      }
       let selection
       try {
-        selection = this.bestMiningTool(block)
+        selection = await this.mineResolvedBlock(block, generation)
       } catch (error) {
         const summary = errorText(error)
+        const missingTool = summary.startsWith('No suitable harvesting tool')
         throw new ActionExecutionError(summary, {
           summary,
-          microActions: [{
+          microActions: [...microActions, {
             id: 'mine-event-1',
-            kind: 'tool',
-            status: 'missing',
+            kind: missingTool ? 'tool' : 'mine',
+            status: missingTool ? 'missing' : 'failed',
             summary,
           }],
         })
       }
-      if (selection.item) await this.bot.equip(selection.item, 'hand')
-      await this.gotoWithRecovery(block.position, generation, 3)
-      if (generation !== this.generation) return
-      await this.withOperationTimeout(
-        this.bot.dig(block),
-        Math.max(8_000, Math.min(30_000, selection.digTime + 5_000)),
-        `Mining ${block.name} timed out · target may be blocked or stale`,
-        () => this.bot.stopDigging(),
-      )
       const toolSummary = selection.item
         ? `Selected ${selection.item.name} for ${block.name} · estimated ${selection.digTime}ms versus ${selection.handTime}ms by hand`
         : `Mining ${block.name} by hand · no faster suitable tool is available`
       return {
-        summary: `Mined ${block.name}${selection.item ? ` with ${selection.item.name}` : ' by hand'}`,
-        microActions: [
+        summary: `${obstruction ? `Cleared ${obstruction.name}, then m` : 'M'}ined ${block.name}${selection.item ? ` with ${selection.item.name}` : ' by hand'}`,
+        microActions: [...microActions,
           { id: 'mine-event-1', kind: 'tool', status: 'completed', itemName: selection.item?.name, summary: toolSummary },
           { id: 'mine-event-2', kind: 'mine', status: 'completed', itemName: block.name, count: 1, summary: `Mined ${block.name} at ${block.position.x},${block.position.y},${block.position.z}` },
         ],
