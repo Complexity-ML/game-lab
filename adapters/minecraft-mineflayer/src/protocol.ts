@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 export const protocol = 'game-lab.control.v1' as const
 
 export const actionTypes = [
-  'move_to', 'navigate_to', 'mine_block', 'place_block', 'craft_item',
+  'move_to', 'navigate_to', 'jump', 'mine_block', 'place_block', 'craft_item',
   'equip_item', 'attack_entity', 'interact', 'use_item', 'wait', 'stop',
 ] as const
 

@@ -17,6 +17,11 @@ test('Minecraft commands are bounded and checkpointed', () => {
   assert.equal(command.action, 'mine_block')
   assert.equal(command.arguments.blockName, 'oak_log')
   assert.match(command.commandId, /^command-/)
+  assert.equal(parseActionCommand({
+    checkpointId: 'minecraft-checkpoint-2',
+    action: 'jump',
+    arguments: { durationMs: 450 },
+  }).action, 'jump')
 })
 
 test('unsafe and malformed commands are rejected', () => {

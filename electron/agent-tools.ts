@@ -77,7 +77,7 @@ export const agentToolDefinitions = [
     strict: true,
     parameters: objectSchema({
       node_id: { type: 'string' },
-      game_action: { type: 'string', enum: ['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item', 'wait', 'stop'] },
+      game_action: { type: 'string', enum: ['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'navigate_to', 'jump', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item', 'wait', 'stop'] },
       checkpoint_id: { type: 'string' },
       target_x: { type: ['number', 'null'] },
       target_y: { type: ['number', 'null'] },
@@ -528,7 +528,7 @@ export class AgentToolSession {
         const nodeId = requiredText(args.node_id, 'node_id', 120)
         if (this.kindOf(nodeId) !== 'agent') throw new Error('queue_game_action requires an existing Game Agent card')
         const gameAction = requiredText(args.game_action, 'game_action', 40) as ValidatedProposalAction['game_action']
-        if (!['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item', 'wait', 'stop'].includes(gameAction ?? '')) throw new Error('Unknown or unsafe game action')
+        if (!['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'navigate_to', 'jump', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item', 'wait', 'stop'].includes(gameAction ?? '')) throw new Error('Unknown or unsafe game action')
         return this.validateCandidate(tool, {
           type: 'game_action',
           node_id: nodeId,

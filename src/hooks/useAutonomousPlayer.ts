@@ -69,7 +69,12 @@ function runtimeEvidence(observation: Awaited<ReturnType<NonNullable<typeof wind
     evidence.unshift(`Game activity: state=${observation.activity.state}; source=${observation.activity.source}; reason=${observation.activity.reason}; last_action=${observation.activity.lastAction}; health_delta=${observation.activity.healthDelta}; hostile_count=${observation.activity.hostileCount}${observation.activity.nearestHostile ? `; nearest_hostile=${observation.activity.nearestHostile.state ?? observation.activity.nearestHostile.id}@${observation.activity.nearestHostile.distance}` : ''}.`)
   }
   if (observation.gameState?.kind === 'minecraft') {
-    evidence.unshift(`Minecraft state: version=${observation.gameState.version}; dimension=${observation.gameState.dimension}; food=${observation.gameState.food}/20; experience_level=${observation.gameState.experienceLevel}; inventory=${observation.gameState.inventory.map((item) => `${item.name}x${item.count}`).join(', ') || 'empty'}; nearby_blocks=${[...new Set(observation.gameState.nearbyBlocks.map((block) => block.name))].slice(0, 24).join(', ') || 'none loaded'}.`)
+    const map = observation.gameState.localMap
+    const hazardCells = map?.cells.filter((cell) => cell.state === 'hazard' || cell.state === 'drop')
+      .slice(0, 24)
+      .map((cell) => `${cell.state}@${cell.position.x},${cell.position.y},${cell.position.z}${cell.ground ? `:${cell.ground}` : ''}`)
+      .join(', ')
+    evidence.unshift(`Minecraft state: version=${observation.gameState.version}; dimension=${observation.gameState.dimension}; food=${observation.gameState.food}/20; experience_level=${observation.gameState.experienceLevel}; inventory=${observation.gameState.inventory.map((item) => `${item.name}x${item.count}`).join(', ') || 'empty'}; nearby_blocks=${[...new Set(observation.gameState.nearbyBlocks.map((block) => block.name))].slice(0, 24).join(', ') || 'none loaded'}${map ? `; local_map=${map.diameter}x${map.diameter}; walkable=${map.counts.walkable}; blocked=${map.counts.blocked}; hazards=${map.counts.hazard}; drops=${map.counts.drop}; unsafe_cells=${hazardCells || 'none'}` : ''}.`)
   }
   return evidence
 }

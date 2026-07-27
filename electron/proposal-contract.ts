@@ -14,7 +14,7 @@ export interface ValidatedProposalAction {
   source: string | null
   target: string | null
   source_handle: string | null
-  game_action: 'move_to' | 'follow_route' | 'interact' | 'enter_vehicle' | 'exit_vehicle' | 'navigate_to' | 'mine_block' | 'place_block' | 'craft_item' | 'equip_item' | 'attack_entity' | 'use_item' | 'wait' | 'stop' | null
+  game_action: 'move_to' | 'follow_route' | 'interact' | 'enter_vehicle' | 'exit_vehicle' | 'navigate_to' | 'jump' | 'mine_block' | 'place_block' | 'craft_item' | 'equip_item' | 'attack_entity' | 'use_item' | 'wait' | 'stop' | null
   game_action_args: {
     target_x: number | null
     target_y: number | null
@@ -50,13 +50,13 @@ const kinds = new Set<ProposalCardKind>(['control', 'explorer', 'worker', 'query
 const actionTypes = new Set<ProposalActionType>(['add_card', 'update_card', 'add_edge', 'remove_edge', 'game_action'])
 const gameActionTypes = new Set<NonNullable<ValidatedProposalAction['game_action']>>([
   'move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle',
-  'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item',
+  'navigate_to', 'jump', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item',
   'wait', 'stop',
 ])
 const autonomousMissionGameActions = new Set<NonNullable<ValidatedProposalAction['game_action']>>([
-  'move_to', 'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'use_item', 'wait', 'stop',
+  'move_to', 'navigate_to', 'jump', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'use_item', 'wait', 'stop',
 ])
-const autonomousEvasionGameActions = new Set<NonNullable<ValidatedProposalAction['game_action']>>(['move_to', 'navigate_to', 'stop'])
+const autonomousEvasionGameActions = new Set<NonNullable<ValidatedProposalAction['game_action']>>(['move_to', 'navigate_to', 'jump', 'stop'])
 const cardNames: Record<ProposalCardKind, string> = { control: 'GAME LAB Control', explorer: 'World Explorer', worker: 'Mission Worker', query: 'Telemetry Query', server: 'Game Server', agent: 'Game Agent', source: 'Evidence Source', profile: 'Telemetry Snapshot', analysis: 'Game Analysis', impact: 'Player Impact', risk: 'Operational Risk', patch: 'Server Patch', monitor: 'Live Monitor', parallel: 'Parallel Agents', diagram: 'Incident Diagram', split: 'Split', decision: 'Agent Decision', transform: 'Action Transform', review: 'Human Review', validation: 'Safety Check', output: 'Game Result' }
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const maximumNodes = 400

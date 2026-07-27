@@ -7,7 +7,7 @@ const ACTION_TIMEOUT_MS = 75_000
 const MAX_RESPONSE_BYTES = 256_000
 const actionTypes = new Set([
   'move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle',
-  'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item',
+  'navigate_to', 'jump', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item',
   'wait', 'stop',
 ])
 const activityStates = new Set(['connecting', 'safe', 'threat_detected', 'defending', 'evading', 'acting', 'blocked', 'stopped', 'disconnected'])
@@ -72,6 +72,46 @@ function safeEndpoint(value: unknown) {
   if (url.username || url.password || url.search || url.hash) throw new Error('Game Bridge endpoint cannot contain credentials, query parameters or fragments')
   url.pathname = url.pathname.replace(/\/+$/, '')
   return url.toString().replace(/\/$/, '')
+}
+
+function normalizeMinecraftLocalMap(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const input = value as JsonRecord
+  const radius = Math.round(boundedNumber(input.radius, 'Minecraft local map radius', 1, 8))
+  const origin = record(input.origin, 'Minecraft local map origin')
+  const states = new Set(['walkable', 'blocked', 'hazard', 'drop'])
+  const cells = Array.isArray(input.cells) ? input.cells.slice(0, (radius * 2 + 1) ** 2).map((entry, index) => {
+    const cell = record(entry, `Minecraft local map cell ${index + 1}`)
+    const position = record(cell.position, `Minecraft local map cell ${index + 1} position`)
+    const state = states.has(String(cell.state)) ? String(cell.state) as 'walkable' | 'blocked' | 'hazard' | 'drop' : 'blocked'
+    return {
+      offsetX: Math.round(boundedNumber(cell.offsetX, `Minecraft local map cell ${index + 1} offset X`, -radius, radius)),
+      offsetZ: Math.round(boundedNumber(cell.offsetZ, `Minecraft local map cell ${index + 1} offset Z`, -radius, radius)),
+      position: {
+        x: boundedNumber(position.x, `Minecraft local map cell ${index + 1} x`, -30_000_000, 30_000_000),
+        y: boundedNumber(position.y, `Minecraft local map cell ${index + 1} y`, -2_048, 2_048),
+        z: boundedNumber(position.z, `Minecraft local map cell ${index + 1} z`, -30_000_000, 30_000_000),
+      },
+      state,
+      ground: typeof cell.ground === 'string' ? cell.ground.trim().slice(0, 100) : undefined,
+    }
+  }) : []
+  return {
+    radius,
+    diameter: radius * 2 + 1,
+    origin: {
+      x: boundedNumber(origin.x, 'Minecraft local map origin x', -30_000_000, 30_000_000),
+      y: boundedNumber(origin.y, 'Minecraft local map origin y', -2_048, 2_048),
+      z: boundedNumber(origin.z, 'Minecraft local map origin z', -30_000_000, 30_000_000),
+    },
+    counts: {
+      walkable: cells.filter((cell) => cell.state === 'walkable').length,
+      blocked: cells.filter((cell) => cell.state === 'blocked').length,
+      hazard: cells.filter((cell) => cell.state === 'hazard').length,
+      drop: cells.filter((cell) => cell.state === 'drop').length,
+    },
+    cells,
+  }
 }
 
 async function jsonRequest(endpoint: string, path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS) {
@@ -186,6 +226,7 @@ function normalizeObservation(value: unknown) {
             distance: boundedNumber(block.distance, `Minecraft nearby block ${index + 1} distance`, 0, 256),
           }
         }) : [],
+        localMap: normalizeMinecraftLocalMap(rawGameState.localMap),
       }
     : undefined
   return {

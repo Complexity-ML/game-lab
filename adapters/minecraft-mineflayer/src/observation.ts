@@ -1,4 +1,5 @@
 import type { Bot } from 'mineflayer'
+import { Vec3 } from 'vec3'
 import { isHostileMob } from './safety.js'
 
 export interface ObservationRuntime {
@@ -35,6 +36,66 @@ function nearbyBlocks(bot: Bot) {
     }
   }
   return blocks.sort((left, right) => left.distance - right.distance).slice(0, 64)
+}
+
+const navigationHazards = new Set([
+  'bubble_column', 'cactus', 'campfire', 'fire', 'lava', 'magma_block', 'powder_snow',
+  'soul_campfire', 'soul_fire', 'sweet_berry_bush', 'water', 'wither_rose',
+])
+
+function localNavigationMap(bot: Bot, radius = 5) {
+  const origin = bot.entity.position.floored()
+  const cells: Array<{
+    offsetX: number
+    offsetZ: number
+    position: { x: number; y: number; z: number }
+    state: 'walkable' | 'blocked' | 'hazard' | 'drop'
+    ground?: string
+  }> = []
+  for (let offsetZ = -radius; offsetZ <= radius; offsetZ += 1) {
+    for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+      const x = origin.x + offsetX
+      const z = origin.z + offsetZ
+      let ground
+      for (let y = origin.y + 1; y >= origin.y - 4; y -= 1) {
+        const candidate = bot.blockAt(new Vec3(x, y, z))
+        if (candidate?.boundingBox === 'block') {
+          ground = candidate
+          break
+        }
+      }
+      if (!ground) {
+        cells.push({ offsetX, offsetZ, position: { x, y: origin.y - 4, z }, state: 'drop' })
+        continue
+      }
+      const feet = bot.blockAt(ground.position.offset(0, 1, 0))
+      const head = bot.blockAt(ground.position.offset(0, 2, 0))
+      const hazardous = [ground, feet, head].some((block) => block && navigationHazards.has(block.name))
+      const clearanceBlocked = [feet, head].some((block) => block && block.boundingBox !== 'empty')
+      const verticalDelta = ground.position.y - (origin.y - 1)
+      const state = hazardous
+        ? 'hazard' as const
+        : clearanceBlocked || verticalDelta > 1
+          ? 'blocked' as const
+          : verticalDelta < -1
+            ? 'drop' as const
+            : 'walkable' as const
+      cells.push({
+        offsetX,
+        offsetZ,
+        position: { x, y: ground.position.y + 1, z },
+        state,
+        ground: ground.name,
+      })
+    }
+  }
+  const counts = {
+    walkable: cells.filter((cell) => cell.state === 'walkable').length,
+    blocked: cells.filter((cell) => cell.state === 'blocked').length,
+    hazard: cells.filter((cell) => cell.state === 'hazard').length,
+    drop: cells.filter((cell) => cell.state === 'drop').length,
+  }
+  return { radius, diameter: radius * 2 + 1, origin: { x: origin.x, y: origin.y, z: origin.z }, counts, cells }
 }
 
 export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
@@ -127,6 +188,7 @@ export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
       experienceLevel: bot.experience.level,
       inventory: bot.inventory.items().slice(0, 46).map((item) => ({ name: item.name, count: item.count, slot: item.slot })),
       nearbyBlocks: nearbyBlocks(bot),
+      localMap: localNavigationMap(bot),
     },
   }
 }

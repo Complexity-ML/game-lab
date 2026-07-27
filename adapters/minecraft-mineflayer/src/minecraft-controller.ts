@@ -26,6 +26,10 @@ function requireName(value: string | undefined, label: string) {
   return value
 }
 
+function errorText(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
+}
+
 export class MinecraftController {
   bot: Bot
   private movements?: InstanceType<typeof Movements>
@@ -50,6 +54,27 @@ export class MinecraftController {
     this.bot = this.connect()
   }
 
+  private safeMovements(bot: Bot) {
+    const movements = new Movements(bot)
+    movements.canDig = true
+    movements.allowParkour = false
+    movements.allow1by1towers = false
+    movements.allowSprinting = true
+    movements.maxDropDown = 1
+    movements.infiniteLiquidDropdownDistance = false
+    movements.dontCreateFlow = true
+    movements.dontMineUnderFallingBlock = true
+    movements.entityCost = 8
+    const weightedMovements = movements as InstanceType<typeof Movements> & { liquidCost: number }
+    weightedMovements.liquidCost = 8
+    for (const name of ['cactus', 'campfire', 'magma_block', 'powder_snow', 'soul_campfire', 'soul_fire', 'sweet_berry_bush']) {
+      const block = bot.registry.blocksByName[name]
+      if (block) movements.blocksToAvoid.add(block.id)
+    }
+    for (const name of ['creeper', 'skeleton', 'stray', 'witch', 'warden']) movements.entitiesToAvoid.add(name)
+    return movements
+  }
+
   private connect() {
     const connectionGeneration = ++this.connectionGeneration
     const reconnecting = this.reconnectAttempt > 0
@@ -70,8 +95,7 @@ export class MinecraftController {
     bot.on('spawn', () => {
       if (connectionGeneration !== this.connectionGeneration) return
       spawnCount += 1
-      this.movements = new Movements(bot)
-      this.movements.canDig = true
+      this.movements = this.safeMovements(bot)
       bot.pathfinder.setMovements(this.movements)
       this.connected = true
       this.lastHealth = bot.health
@@ -276,6 +300,48 @@ export class MinecraftController {
     this.bot.attack(target)
   }
 
+  private async pulseJump(durationMs = 450) {
+    this.bot.setControlState('jump', true)
+    this.bot.setControlState('forward', true)
+    try {
+      await new Promise((resolve) => setTimeout(resolve, Math.max(150, Math.min(1_200, durationMs))))
+    } finally {
+      this.bot.setControlState('jump', false)
+      this.bot.setControlState('forward', false)
+    }
+  }
+
+  private async gotoWithRecovery(target: Vec3, generation: number, radius = 1) {
+    let lastError: unknown
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      if (generation !== this.generation) throw new Error('Movement cancelled before path recovery')
+      let timeout: NodeJS.Timeout | undefined
+      try {
+        await Promise.race([
+          this.bot.pathfinder.goto(new goals.GoalNear(target.x, target.y, target.z, radius)),
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(() => {
+              this.bot.pathfinder.setGoal(null)
+              reject(new Error(`Pathfinder attempt ${attempt} timed out after 12 seconds`))
+            }, 12_000)
+          }),
+        ])
+        return
+      } catch (error) {
+        lastError = error
+        this.bot.pathfinder.setGoal(null)
+        if (attempt === 2 || generation !== this.generation) break
+        this.updateActivity('acting', `Path blocked · automatic jump recovery ${attempt}/1`)
+        await this.pulseJump()
+        this.movements = this.safeMovements(this.bot)
+        this.bot.pathfinder.setMovements(this.movements)
+      } finally {
+        if (timeout) clearTimeout(timeout)
+      }
+    }
+    throw new Error(`Movement blocked after automatic jump recovery: ${errorText(lastError)}`)
+  }
+
   private updateActivity(stage: string, lastAction: string) {
     if (this.stage !== stage) this.stageChangedAt = new Date().toISOString()
     this.stage = stage
@@ -323,14 +389,18 @@ export class MinecraftController {
       await new Promise((resolve) => setTimeout(resolve, args.durationMs ?? 1_000))
       return
     }
+    if (command.action === 'jump') {
+      await this.pulseJump(args.durationMs ?? 450)
+      return
+    }
     if (command.action === 'move_to' || command.action === 'navigate_to') {
       const target = coordinates(args)
-      await this.bot.pathfinder.goto(new goals.GoalNear(target.x, target.y, target.z, 1))
+      await this.gotoWithRecovery(target, generation)
       return
     }
     if (command.action === 'mine_block') {
       const block = this.block(args)
-      await this.bot.pathfinder.goto(new goals.GoalNear(block.position.x, block.position.y, block.position.z, 3))
+      await this.gotoWithRecovery(block.position, generation, 3)
       if (generation !== this.generation) return
       await this.bot.dig(block)
       return
@@ -343,7 +413,7 @@ export class MinecraftController {
       const faceVector = faceVectors[face]
       const reference = this.bot.blockAt(target.minus(faceVector))
       if (!reference) throw new Error('Placement reference block is not loaded')
-      await this.bot.pathfinder.goto(new goals.GoalNear(reference.position.x, reference.position.y, reference.position.z, 3))
+      await this.gotoWithRecovery(reference.position, generation, 3)
       if (generation !== this.generation) return
       await this.bot.placeBlock(reference, faceVector)
       return

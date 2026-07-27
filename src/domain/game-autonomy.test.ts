@@ -19,12 +19,17 @@ describe('autonomous gameplay policy', () => {
   it('allows low-risk mission actions while keeping sensitive actions reviewed', () => {
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'mine_block', observation)).toBe(false)
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'craft_item', observation)).toBe(false)
+    expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'jump', observation)).toBe(false)
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'attack_entity', observation)).toBe(true)
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'interact', observation)).toBe(true)
   })
 
   it('allows immediate evasion but reviews non-evasive actions when the player is unsafe', () => {
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'navigate_to', {
+      ...observation,
+      player: { ...observation.player, health: 6 },
+    })).toBe(false)
+    expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'jump', {
       ...observation,
       player: { ...observation.player, health: 6 },
     })).toBe(false)

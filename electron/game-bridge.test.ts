@@ -49,6 +49,16 @@ describe('local structured Game Bridge', () => {
           experienceLevel: 3,
           inventory: [{ name: 'oak_log', count: 4, slot: 9 }],
           nearbyBlocks: [{ name: 'oak_log', position: { x: 10, y: 64, z: 20 }, distance: 5 }],
+          localMap: {
+            radius: 1,
+            diameter: 3,
+            origin: { x: 1, y: 2, z: 3 },
+            counts: { walkable: 1, blocked: 0, hazard: 1, drop: 0 },
+            cells: [
+              { offsetX: 0, offsetZ: 0, position: { x: 1, y: 2, z: 3 }, state: 'walkable', ground: 'grass_block' },
+              { offsetX: 1, offsetZ: 0, position: { x: 2, y: 2, z: 3 }, state: 'hazard', ground: 'lava' },
+            ],
+          },
         },
       },
       { status: 'completed', summary: 'Movement completed' },
@@ -61,7 +71,7 @@ describe('local structured Game Bridge', () => {
     )
 
     const observation = await client.observation('post_action')
-    expect(observation).toMatchObject({ checkpointId: 'checkpoint-1', mission: { objective: 'Reach the marker' }, activity: { state: 'threat_detected', source: 'post_action', healthDelta: -2, hostileCount: 1, nearestHostile: { state: 'zombie', distance: 6 } }, nearby: [{ id: 'marker-1', position: { x: 12, y: 64, z: 20 } }], gameState: { kind: 'minecraft', food: 18, inventory: [{ name: 'oak_log', count: 4 }] } })
+    expect(observation).toMatchObject({ checkpointId: 'checkpoint-1', mission: { objective: 'Reach the marker' }, activity: { state: 'threat_detected', source: 'post_action', healthDelta: -2, hostileCount: 1, nearestHostile: { state: 'zombie', distance: 6 } }, nearby: [{ id: 'marker-1', position: { x: 12, y: 64, z: 20 } }], gameState: { kind: 'minecraft', food: 18, inventory: [{ name: 'oak_log', count: 4 }], localMap: { radius: 1, diameter: 3, counts: { walkable: 1, hazard: 1 }, cells: [{ state: 'walkable' }, { state: 'hazard' }] } } })
 
     const receipt = await client.execute({
       action: 'mine_block',

@@ -4,6 +4,7 @@ import type { GameActionCommand, GameObservation } from './game-bridge'
 const autonomousMissionActions = new Set<GameActionCommand['action']>([
   'move_to',
   'navigate_to',
+  'jump',
   'mine_block',
   'place_block',
   'craft_item',
@@ -12,7 +13,7 @@ const autonomousMissionActions = new Set<GameActionCommand['action']>([
   'wait',
   'stop',
 ])
-const autonomousEvasionActions = new Set<GameActionCommand['action']>(['move_to', 'navigate_to', 'stop'])
+const autonomousEvasionActions = new Set<GameActionCommand['action']>(['move_to', 'navigate_to', 'jump', 'stop'])
 
 export const autonomousMissionActionBudget = 96
 

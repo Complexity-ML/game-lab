@@ -194,6 +194,20 @@ button { color: inherit; }
 .game-observation-summary > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .game-observation-summary strong { font-size: 10px; }
 .game-observation-summary small { color: var(--muted); font-size: 8px; line-height: 1.5; }
+.minecraft-local-map { display: grid; grid-template-columns: minmax(190px, 260px) 1fr; gap: 10px 14px; align-items: start; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--surface) 82%, transparent); }
+.minecraft-local-map-heading { display: flex; flex-direction: column; gap: 8px; }
+.minecraft-local-map-heading > span:first-child { display: flex; flex-direction: column; gap: 2px; }
+.minecraft-local-map-heading strong { font-size: 10px; }
+.minecraft-local-map-heading small, .minecraft-local-map > small { color: var(--muted); font-size: 8px; }
+.minecraft-local-map-legend { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; color: var(--muted); font-size: 8px; }
+.minecraft-local-map-legend i { width: 7px; height: 7px; border-radius: 2px; }
+.minecraft-local-map-grid { display: grid; gap: 2px; width: min(100%, 220px); aspect-ratio: 1; padding: 5px; border-radius: 8px; background: var(--bg); }
+.minecraft-local-map-grid > span { position: relative; min-width: 4px; border-radius: 2px; background: var(--line); }
+.minecraft-local-map-grid .walkable, .minecraft-local-map-legend .walkable { background: #57c785; }
+.minecraft-local-map-grid .blocked, .minecraft-local-map-legend .blocked { background: #718096; }
+.minecraft-local-map-grid .hazard, .minecraft-local-map-legend .hazard { background: #ff6b6b; }
+.minecraft-local-map-grid .drop, .minecraft-local-map-legend .drop { background: #f6ad55; }
+.minecraft-local-map-grid .is-player::after { position: absolute; inset: 24%; border: 1px solid white; border-radius: 50%; background: #755cff; content: ''; box-shadow: 0 0 0 1px rgba(0, 0, 0, .28); }
 .game-checkpoint-list { display: grid; gap: 6px; }
 .game-checkpoint-list > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
 .game-checkpoint-list span { color: var(--text); font-size: 9px; font-weight: 700; }

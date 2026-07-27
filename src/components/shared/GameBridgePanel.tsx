@@ -105,6 +105,25 @@ export function GameBridgePanel() {
         <small>Checkpoint {observation.checkpointId} · source {observation.activity?.source ?? 'manual'} · {observation.environment.area} · health {observation.player.health}{observation.activity ? ` (${observation.activity.healthDelta > 0 ? '+' : ''}${observation.activity.healthDelta}) · ${observation.activity.hostileCount} hostile · last: ${observation.activity.lastAction}` : ''} · {observation.nearby.length} nearby entities{observation.gameState?.kind === 'minecraft' ? ` · food ${observation.gameState.food}/20 · ${observation.gameState.inventory.length} inventory stacks · ${observation.gameState.nearbyBlocks.length} nearby blocks` : ''}</small>
       </div>
     </div>}
+    {observation?.gameState?.kind === 'minecraft' && observation.gameState.localMap && <div className="minecraft-local-map">
+      <div className="minecraft-local-map-heading">
+        <span><strong>5-block navigation map</strong><small>Safe route preview around the agent</small></span>
+        <span className="minecraft-local-map-legend"><i className="walkable" /> safe <i className="blocked" /> blocked <i className="hazard" /> hazard <i className="drop" /> drop</span>
+      </div>
+      <div
+        aria-label={`${observation.gameState.localMap.diameter} by ${observation.gameState.localMap.diameter} Minecraft navigation map`}
+        className="minecraft-local-map-grid"
+        style={{ gridTemplateColumns: `repeat(${observation.gameState.localMap.diameter}, 1fr)` }}
+      >
+        {observation.gameState.localMap.cells.map((cell) => <span
+          aria-label={`${cell.state} at ${cell.position.x}, ${cell.position.y}, ${cell.position.z}`}
+          className={`${cell.state}${cell.offsetX === 0 && cell.offsetZ === 0 ? ' is-player' : ''}`}
+          key={`${cell.offsetX}:${cell.offsetZ}`}
+          title={`${cell.state} · ${cell.ground ?? 'no ground'} · ${cell.position.x}, ${cell.position.y}, ${cell.position.z}`}
+        />)}
+      </div>
+      <small>{observation.gameState.localMap.counts.walkable} safe · {observation.gameState.localMap.counts.blocked} blocked · {observation.gameState.localMap.counts.hazard} hazards · {observation.gameState.localMap.counts.drop} drops</small>
+    </div>}
     {checkpoints.length > 0 && <div className="game-checkpoint-list">
       {checkpoints.map((checkpoint) => <div key={checkpoint.id}><span>{checkpoint.kind === 'action' ? checkpoint.action : 'observation'} · {new Date(checkpoint.createdAt).toLocaleTimeString()}</span><small>{checkpoint.status} · {checkpoint.summary}</small></div>)}
     </div>}

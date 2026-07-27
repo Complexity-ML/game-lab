@@ -1,6 +1,6 @@
 export const gameActionTypes = [
   'move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle',
-  'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item',
+  'navigate_to', 'jump', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item',
   'wait', 'stop',
 ] as const
 
@@ -92,6 +92,19 @@ export interface GameObservation {
     experienceLevel: number
     inventory: Array<{ name: string; count: number; slot: number }>
     nearbyBlocks: Array<{ name: string; position: { x: number; y: number; z: number }; distance: number }>
+    localMap?: {
+      radius: number
+      diameter: number
+      origin: { x: number; y: number; z: number }
+      counts: { walkable: number; blocked: number; hazard: number; drop: number }
+      cells: Array<{
+        offsetX: number
+        offsetZ: number
+        position: { x: number; y: number; z: number }
+        state: 'walkable' | 'blocked' | 'hazard' | 'drop'
+        ground?: string
+      }>
+    }
   }
 }
 
