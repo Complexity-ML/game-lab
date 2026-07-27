@@ -66,6 +66,7 @@ describe('autonomous gameplay policy', () => {
   it('replans bounded navigation and mixed-version adapter failures', () => {
     expect(isRecoverableGameActionFailure('Pathfinder attempt timed out')).toBe(true)
     expect(isRecoverableGameActionFailure('Action is not in the Minecraft allowlist')).toBe(true)
+    expect(isRecoverableGameActionFailure('mine_block failed: Checkpoint mismatch: expected dark_oak_log, found dark_oak_leaves')).toBe(true)
     expect(isRecoverableGameActionFailure('Minecraft credentials rejected')).toBe(false)
   })
 
