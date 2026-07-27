@@ -1,5 +1,6 @@
 import type { Edge } from '@xyflow/react'
 import type { AgentProposal, CardKind, PipelineNode, PipelineNodeData } from './pipeline'
+import type { GameActionType } from './game-bridge'
 
 export type ApiProvider = 'openai' | 'anthropic' | 'moonshot'
 export type ActiveAiSource = 'chatgpt' | ApiProvider
@@ -31,7 +32,7 @@ export interface ChatGPTModelOption { id: string; label: string; description?: s
 export interface ChatGPTSessionStatus { available: boolean; connected: boolean; email?: string; planType?: string; models?: ChatGPTModelOption[]; selectedModel?: string; selectedEffort?: string; error?: string }
 
 interface AiAction {
-  type: 'add_card' | 'update_card' | 'add_edge' | 'remove_edge'
+  type: 'add_card' | 'update_card' | 'add_edge' | 'remove_edge' | 'game_action'
   node_id: string | null
   kind: CardKind | null
   label: string | null
@@ -41,6 +42,17 @@ interface AiAction {
   source: string | null
   target: string | null
   source_handle: string | null
+  game_action?: GameActionType | null
+  game_action_args?: {
+    target_x: number | null
+    target_y: number | null
+    target_z: number | null
+    entity_id: string | null
+    route_id: string | null
+    interaction: string | null
+    duration_ms: number | null
+  } | null
+  checkpoint_id?: string | null
   reason: string
 }
 
@@ -131,6 +143,7 @@ export function materializeAiProposal(response: AiProposalResponse, nodes: Pipel
   const updatedNodes: AgentProposal['updatedNodes'] = []
   const addedEdges: Edge[] = []
   const removedEdgeIds: string[] = []
+  const gameActions: NonNullable<AgentProposal['gameActions']> = []
   const rightmost = nodes.reduce((maximum, node) => Math.max(maximum, node.position.x), 0)
 
   for (const [index, action] of contract.actions.slice(0, 20).entries()) {
@@ -203,6 +216,28 @@ export function materializeAiProposal(response: AiProposalResponse, nodes: Pipel
       const edgeId = text(action.node_id, '', 120)
       if (knownEdgeIds.has(edgeId)) removedEdgeIds.push(edgeId)
     }
+    if (action.type === 'game_action' && action.node_id && action.game_action && action.game_action_args && action.checkpoint_id) {
+      const nodeId = resolveNode(action.node_id)
+      if (nodeId && knownNodeKinds.get(nodeId) === 'agent') {
+        gameActions.push({
+          agentNodeId: nodeId,
+          commandId: `game-action-${Date.now()}-${index + 1}`,
+          checkpointId: action.checkpoint_id,
+          action: action.game_action,
+          arguments: {
+            ...(action.game_action_args.target_x !== null ? { targetX: action.game_action_args.target_x } : {}),
+            ...(action.game_action_args.target_y !== null ? { targetY: action.game_action_args.target_y } : {}),
+            ...(action.game_action_args.target_z !== null ? { targetZ: action.game_action_args.target_z } : {}),
+            ...(action.game_action_args.entity_id ? { entityId: action.game_action_args.entity_id } : {}),
+            ...(action.game_action_args.route_id ? { routeId: action.game_action_args.route_id } : {}),
+            ...(action.game_action_args.interaction ? { interaction: action.game_action_args.interaction } : {}),
+            ...(action.game_action_args.duration_ms !== null ? { durationMs: action.game_action_args.duration_ms } : {}),
+          },
+          requestedAt: new Date().toISOString(),
+          reason: text(action.reason, 'GPT queued an allowlisted game action.', 500),
+        })
+      }
+    }
   }
 
   const includesHumanReviewCard = addedNodes.some((node) => node.data.kind === 'review')
@@ -226,6 +261,7 @@ export function materializeAiProposal(response: AiProposalResponse, nodes: Pipel
     updatedNodes,
     addedEdges,
     removedEdgeIds,
+    gameActions,
   }
 }
 

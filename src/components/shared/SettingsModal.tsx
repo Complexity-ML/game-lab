@@ -13,6 +13,7 @@ import type { AppUpdateChannel, AppUpdateStatus } from '../../domain/updates'
 import type { DiagnosticBundle, DiagnosticSettings } from '../../domain/diagnostics'
 import type { AutonomyPolicy } from '../../domain/autonomy-policy'
 import type { CatalogConnectorKind, CatalogConnectorManifest, CatalogConnectorSummary } from '../../domain/catalog-connectors'
+import { GameBridgePanel } from './GameBridgePanel'
 
 export type SettingsSection = 'appearance' | 'workspaces' | 'ai' | 'autonomy' | 'connections' | 'updates' | 'diagnostics' | 'presets' | 'pipeline' | 'versions'
 
@@ -542,7 +543,8 @@ export function SettingsModal(props: SettingsModalProps) {
         </article>}
 
         {activeSection === 'connections' && <article className="settings-page">
-          <div className="settings-page-heading"><small>CONNECTIONS</small><h3>Catalog and evidence sources</h3><p>Connect normalized MCP or HTTP API catalogs without coupling pipeline cards to a vendor.</p></div>
+          <div className="settings-page-heading"><small>CONNECTIONS</small><h3>Game control and evidence sources</h3><p>Connect a local structured game adapter or normalized catalog source without coupling cards to a vendor.</p></div>
+          <GameBridgePanel />
           <section className="settings-section">
             <div className="settings-section-title"><span>Built-in · DataHub</span><small>{mcpTransport === 'demo' ? 'Not configured' : mcpTransport === 'http' ? 'Remote MCP' : 'GraphQL GMS + local MCP'}</small></div>
             <div className="settings-setting-row"><div className={`settings-icon datahub-${connectionMode}`}><Database size={19} /></div><div><strong>DataHub {connectionMode === 'connected' ? 'connected' : 'not connected'}</strong><p>{mcpMessage}</p></div><ActionButton disabled={dataHubBusy || connectionMode !== 'connected'} onClick={() => void onSyncDataHub()} variant="ghost">Sync now</ActionButton></div>

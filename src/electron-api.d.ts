@@ -7,6 +7,7 @@ import type { AppUpdateChannel, AppUpdateStatus } from './domain/updates'
 import type { IncidentEvent, IncidentEventInput, IncidentRecordResult } from './domain/incidents'
 import type { CatalogAssetSummary, CatalogConnectorManifest, CatalogConnectorSummary, CatalogInspection } from './domain/catalog-connectors'
 import type { AgentProposalMemoryEntry, AgentProposalMemoryStatus, RememberAgentProposalInput } from './domain/proposal-memory'
+import type { GameActionCommand, GameActionReceipt, GameBridgeSettings, GameBridgeStatus, GameCheckpointSummary, GameObservation } from './domain/game-bridge'
 
 interface DataHubStatus {
   mode: 'demo' | 'connected'
@@ -128,6 +129,13 @@ declare global {
       downloadAppUpdate(): Promise<AppUpdateStatus>
       installAppUpdate(): Promise<AppUpdateStatus>
       openAppSetupUpdater(): Promise<{ opened: true; channel: AppUpdateChannel; path: string }>
+      getGameBridgeSettings(): Promise<GameBridgeSettings>
+      saveGameBridgeSettings(settings: GameBridgeSettings): Promise<GameBridgeSettings>
+      getGameBridgeStatus(): Promise<GameBridgeStatus>
+      getGameObservation(): Promise<GameObservation>
+      executeGameAction(command: GameActionCommand): Promise<GameActionReceipt>
+      emergencyStopGameBridge(): Promise<{ stopped: boolean; commandId: string; summary: string }>
+      listGameCheckpoints(limit?: number): Promise<GameCheckpointSummary[]>
       onAppUpdateStatusChanged(callback: (status: AppUpdateStatus) => void): () => void
       onHumanReviewOpened(callback: (payload: { versionId?: string }) => void): () => void
       getWindowState(): Promise<{ fullscreen: boolean }>

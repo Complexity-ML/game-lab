@@ -851,6 +851,19 @@ function db(userDataDirectory: string) {
       PRIMARY KEY (scope_id, checkpoint_key, path),
       FOREIGN KEY (scope_id, checkpoint_key) REFERENCES catalog_checkpoints(scope_id, checkpoint_key) ON DELETE CASCADE ON UPDATE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS game_checkpoints (
+      id TEXT PRIMARY KEY,
+      scope_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('observation', 'action')),
+      checkpoint_id TEXT NOT NULL,
+      observation_id TEXT,
+      command_id TEXT,
+      action TEXT,
+      status TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS game_checkpoints_scope_time_idx ON game_checkpoints (scope_id, created_at DESC);
     CREATE TABLE IF NOT EXISTS agent_proposal_memory (
       id TEXT PRIMARY KEY,
       workspace_id TEXT,
@@ -963,6 +976,7 @@ export function beginWorkspaceSession(userDataDirectory: string) {
   const uncleanShutdown = previous === 'false'
   if (!activeWorkspaceId(target)) {
     target.prepare("DELETE FROM catalog_checkpoints WHERE scope_id = 'workbench'").run()
+    target.prepare("DELETE FROM game_checkpoints WHERE scope_id = 'workbench'").run()
     target.prepare('DELETE FROM agent_proposal_memory WHERE workspace_id IS NULL').run()
   }
   writeSetting(target, CLEAN_SHUTDOWN_KEY, 'false')
@@ -1003,6 +1017,7 @@ export function createWorkspace(userDataDirectory: string, name: unknown, payloa
     if (!previousWorkspaceId) {
       target.prepare('UPDATE agent_proposal_memory SET workspace_id = ? WHERE workspace_id IS NULL').run(id)
       target.prepare("UPDATE catalog_checkpoints SET scope_id = ? WHERE scope_id = 'workbench'").run(id)
+      target.prepare("UPDATE game_checkpoints SET scope_id = ? WHERE scope_id = 'workbench'").run(id)
     }
     writeSetting(target, ACTIVE_WORKSPACE_KEY, id)
   })
@@ -1053,6 +1068,7 @@ export function deleteWorkspace(userDataDirectory: string, workspaceId: unknown)
   runTransaction(target, () => {
     target.prepare('DELETE FROM incident_events WHERE workspace_id = ?').run(workspaceId)
     target.prepare('DELETE FROM catalog_checkpoints WHERE scope_id = ?').run(workspaceId)
+    target.prepare('DELETE FROM game_checkpoints WHERE scope_id = ?').run(workspaceId)
     target.prepare('DELETE FROM agent_proposal_memory WHERE workspace_id = ?').run(workspaceId)
     target.prepare('DELETE FROM workspaces WHERE id = ?').run(workspaceId)
   })
@@ -1117,6 +1133,56 @@ export function saveCatalogCheckpoint(userDataDirectory: string, checkpointKey: 
     writeRelationalValues(target, 'catalog_checkpoint_values', ['scope_id', 'checkpoint_key'], [scopeId, key], payload)
   })
   return { saved: true as const, scopeId, updatedAt }
+}
+
+function gameCheckpointText(value: unknown, label: string, maximum: number): string
+function gameCheckpointText(value: unknown, label: string, maximum: number, optional: true): string | undefined
+function gameCheckpointText(value: unknown, label: string, maximum: number, optional = false) {
+  if (optional && (value === undefined || value === null || value === '')) return undefined
+  if (typeof value !== 'string' || !value.trim()) throw new Error(`${label} is required`)
+  return value.trim().replace(/[^\x20-\x7E]/g, ' ').slice(0, maximum)
+}
+
+export function saveGameCheckpoint(userDataDirectory: string, payload: unknown) {
+  const input = record(payload)
+  const kind = input.kind === 'action' ? 'action' : input.kind === 'observation' ? 'observation' : undefined
+  if (!kind) throw new Error('Invalid game checkpoint kind')
+  const target = db(userDataDirectory)
+  const scopeId = catalogCheckpointScope(target)
+  const checkpointId = gameCheckpointText(input.checkpointId, 'Game checkpoint ID', 120)
+  const observationId = gameCheckpointText(input.observationId, 'Observation ID', 120, true)
+  const commandId = gameCheckpointText(input.commandId, 'Command ID', 120, true)
+  const action = gameCheckpointText(input.action, 'Game action', 40, true)
+  const status = gameCheckpointText(input.status, 'Game checkpoint status', 40)
+  const summary = gameCheckpointText(input.summary, 'Game checkpoint summary', 500)
+  const id = `game-checkpoint-${randomUUID()}`
+  const createdAt = new Date().toISOString()
+  target.prepare(`
+    INSERT INTO game_checkpoints (
+      id, scope_id, kind, checkpoint_id, observation_id, command_id, action, status, summary, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, scopeId, kind, checkpointId, observationId ?? null, commandId ?? null, action ?? null, status, summary, createdAt)
+  return { id, scopeId, kind, checkpointId, observationId, commandId, action, status, summary, createdAt }
+}
+
+export function listGameCheckpoints(userDataDirectory: string, limit: unknown = 20) {
+  const target = db(userDataDirectory)
+  const scopeId = catalogCheckpointScope(target)
+  const boundedLimit = typeof limit === 'number' && Number.isInteger(limit) ? Math.max(1, Math.min(100, limit)) : 20
+  return (target.prepare(`
+    SELECT id, kind, checkpoint_id, observation_id, command_id, action, status, summary, created_at
+    FROM game_checkpoints WHERE scope_id = ? ORDER BY created_at DESC LIMIT ?
+  `).all(scopeId, boundedLimit) as unknown as Array<Record<string, unknown>>).map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    checkpointId: row.checkpoint_id,
+    ...(typeof row.observation_id === 'string' ? { observationId: row.observation_id } : {}),
+    ...(typeof row.command_id === 'string' ? { commandId: row.command_id } : {}),
+    ...(typeof row.action === 'string' ? { action: row.action } : {}),
+    status: row.status,
+    summary: row.summary,
+    createdAt: row.created_at,
+  }))
 }
 
 export function commitActiveWorkspace(userDataDirectory: string, payload: unknown) {

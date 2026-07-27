@@ -66,6 +66,13 @@ const appUpdateCheckChannel = 'game-lab:app-update-check'
 const appUpdateDownloadChannel = 'game-lab:app-update-download'
 const appUpdateInstallChannel = 'game-lab:app-update-install'
 const appUpdateOpenSetupChannel = 'game-lab:app-update-open-setup'
+const gameBridgeSettingsChannel = 'game-lab:game-bridge-settings'
+const gameBridgeSettingsSaveChannel = 'game-lab:game-bridge-settings-save'
+const gameBridgeStatusChannel = 'game-lab:game-bridge-status'
+const gameBridgeObservationChannel = 'game-lab:game-bridge-observation'
+const gameBridgeActionChannel = 'game-lab:game-bridge-action'
+const gameBridgeStopChannel = 'game-lab:game-bridge-stop'
+const gameBridgeCheckpointsChannel = 'game-lab:game-bridge-checkpoints'
 
 contextBridge.exposeInMainWorld('dataLab', {
   runtime: 'electron',
@@ -132,6 +139,13 @@ contextBridge.exposeInMainWorld('dataLab', {
   downloadAppUpdate: () => ipcRenderer.invoke(appUpdateDownloadChannel),
   installAppUpdate: () => ipcRenderer.invoke(appUpdateInstallChannel),
   openAppSetupUpdater: () => ipcRenderer.invoke(appUpdateOpenSetupChannel),
+  getGameBridgeSettings: () => ipcRenderer.invoke(gameBridgeSettingsChannel),
+  saveGameBridgeSettings: (payload: { endpoint: string }) => ipcRenderer.invoke(gameBridgeSettingsSaveChannel, payload),
+  getGameBridgeStatus: () => ipcRenderer.invoke(gameBridgeStatusChannel),
+  getGameObservation: () => ipcRenderer.invoke(gameBridgeObservationChannel),
+  executeGameAction: (payload: unknown) => ipcRenderer.invoke(gameBridgeActionChannel, payload),
+  emergencyStopGameBridge: () => ipcRenderer.invoke(gameBridgeStopChannel),
+  listGameCheckpoints: (limit = 20) => ipcRenderer.invoke(gameBridgeCheckpointsChannel, { limit }),
   onAppUpdateStatusChanged: (callback: (status: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: unknown) => callback(status)
     ipcRenderer.on(appUpdateStatusChangedChannel, listener)

@@ -1,5 +1,22 @@
 # GAME LAB
 
+## Local Game Bridge
+
+GAME LAB can give GPT a bounded structured game state without screenshots or GraphQL. The local adapter contract is `game-lab.control.v1`:
+
+- `GET /v1/status` reports adapter and session health.
+- `GET /v1/observation` returns player, mission, environment and nearby-entity state with a checkpoint ID.
+- `POST /v1/actions` accepts one allowlisted action tied to that exact checkpoint.
+- `POST /v1/stop` immediately stops movement and queued actions.
+
+For the local demo:
+
+```bash
+npm run bridge:demo
+```
+
+Then open **Settings → Connections → Local Game Bridge**, keep `http://127.0.0.1:4317`, and select **Save & connect**. In version 1, GAME LAB and the game adapter intentionally run on the same Windows PC. Every GPT gameplay action requires Human Review and its observation/action receipt is stored as a workspace-scoped SQLite checkpoint.
+
 [![Tests](https://github.com/Complexity-ML/game-lab/actions/workflows/fast-pr.yml/badge.svg)](https://github.com/Complexity-ML/game-lab/actions/workflows/fast-pr.yml)
 [![Tauri Setup](https://github.com/Complexity-ML/game-lab/actions/workflows/setup-preview.yml/badge.svg)](https://github.com/Complexity-ML/game-lab/actions/workflows/setup-preview.yml)
 [![Release](https://github.com/Complexity-ML/game-lab/actions/workflows/macos-release.yml/badge.svg)](https://github.com/Complexity-ML/game-lab/actions/workflows/macos-release.yml)

@@ -5,7 +5,7 @@ import { getDataHubStatus, loadDatasetContext } from './datahub.js'
 import { auditDataHubWithMcp, closeDataHubMcp, connectDataHubMcp, getDataHubMcpConfigurationStatus, inspectDataHubAsset, invalidateDataHubContext, parseDataHubDecisionRequest, saveDataHubMcpSettings, searchDataHubAssets, writeDataHubDecision } from './datahub-mcp.js'
 import { cancelAiProposal, getAiStatus, refreshAiModelCatalog, runAiProposal, saveAiSettings, testAiConnection } from './ai-provider.js'
 import { ChatGPTAgentSession } from './chatgpt-session.js'
-import { archiveWorkspace, autosaveWorkspaceDraft, beginWorkspaceSession, clearIncidentEvents, closeWorkspaceDatabase, commitActiveWorkspace, createWorkspace, deleteWorkspace, duplicateWorkspace, listAgentProposalMemory, listIncidentEvents, loadAppSetting, loadCatalogCheckpoint, loadWorkspaceManagerState, markWorkspaceSessionClean, openWorkspace, recordIncidentEvent, rememberAgentProposal, renameWorkspace, resolveWorkspaceRecovery, saveAppSetting, saveCatalogCheckpoint, updateAgentProposalMemoryStatus } from './workspace-db.js'
+import { archiveWorkspace, autosaveWorkspaceDraft, beginWorkspaceSession, clearIncidentEvents, closeWorkspaceDatabase, commitActiveWorkspace, createWorkspace, deleteWorkspace, duplicateWorkspace, listAgentProposalMemory, listGameCheckpoints, listIncidentEvents, loadAppSetting, loadCatalogCheckpoint, loadWorkspaceManagerState, markWorkspaceSessionClean, openWorkspace, recordIncidentEvent, rememberAgentProposal, renameWorkspace, resolveWorkspaceRecovery, saveAppSetting, saveCatalogCheckpoint, saveGameCheckpoint, updateAgentProposalMemoryStatus } from './workspace-db.js'
 import { parseActiveAiSource, requireSelectableAiSource, type ActiveAiSource } from './active-ai-source.js'
 import { reserveHumanReviewNotification } from './human-review-notifications.js'
 import { ensureDiagnosticLog, exportDiagnosticBundle, loadDiagnosticSettings, recordDiagnosticEvent, saveDiagnosticSettings } from './diagnostics.js'
@@ -14,6 +14,7 @@ import { parseUpdateChannel } from './update-policy.js'
 import { desktopWindowFrame } from './window-platform.js'
 import { openSetupUpdater, readSetupChannel, saveSetupChannel } from './setup-updater.js'
 import { deleteCatalogConnector, inspectCatalogAsset, listCatalogConnectors, saveCatalogConnector, searchCatalogAssets, testCatalogConnector } from './catalog-connectors.js'
+import { GameBridgeClient } from './game-bridge.js'
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
 const statusChannel = 'game-lab:datahub-status'
@@ -82,10 +83,18 @@ const appUpdateCheckChannel = 'game-lab:app-update-check'
 const appUpdateDownloadChannel = 'game-lab:app-update-download'
 const appUpdateInstallChannel = 'game-lab:app-update-install'
 const appUpdateOpenSetupChannel = 'game-lab:app-update-open-setup'
+const gameBridgeSettingsChannel = 'game-lab:game-bridge-settings'
+const gameBridgeSettingsSaveChannel = 'game-lab:game-bridge-settings-save'
+const gameBridgeStatusChannel = 'game-lab:game-bridge-status'
+const gameBridgeObservationChannel = 'game-lab:game-bridge-observation'
+const gameBridgeActionChannel = 'game-lab:game-bridge-action'
+const gameBridgeStopChannel = 'game-lab:game-bridge-stop'
+const gameBridgeCheckpointsChannel = 'game-lab:game-bridge-checkpoints'
 let mainWindow: BrowserWindow | undefined
 let isQuitting = false
 let chatGPT: ChatGPTAgentSession | undefined
 let appUpdates: AppUpdateController | undefined
+let gameBridge: GameBridgeClient | undefined
 let workspaceSessionWasUnclean = false
 
 app.setName('GAME LAB')
@@ -231,6 +240,13 @@ app.whenReady().then(() => {
     statusChannel: appUpdateStatusChangedChannel,
   })
   chatGPT = new ChatGPTAgentSession((url) => shell.openExternal(url), app.getVersion(), join(app.getPath('userData'), 'chatgpt-agent'))
+  gameBridge = new GameBridgeClient(
+    {
+      load: (key) => loadAppSetting(app.getPath('userData'), key),
+      save: (key, value) => saveAppSetting(app.getPath('userData'), key, value),
+    },
+    { save: (checkpoint) => saveGameCheckpoint(app.getPath('userData'), checkpoint) },
+  )
   ipcMain.handle(statusChannel, () => getDataHubStatus())
   ipcMain.handle(datasetChannel, (_event, payload: { urn?: unknown }) => {
     if (typeof payload?.urn !== 'string') throw new Error('Invalid DataHub dataset request')
@@ -302,6 +318,13 @@ app.whenReady().then(() => {
     return chatGPT?.runProposal(payload)
   })
   ipcMain.handle(chatGPTCancelChannel, () => chatGPT?.cancel() ?? { cancelled: false })
+  ipcMain.handle(gameBridgeSettingsChannel, () => gameBridge?.configuration())
+  ipcMain.handle(gameBridgeSettingsSaveChannel, (_event, payload: unknown) => gameBridge?.saveConfiguration(payload))
+  ipcMain.handle(gameBridgeStatusChannel, () => gameBridge?.status())
+  ipcMain.handle(gameBridgeObservationChannel, () => gameBridge?.observation())
+  ipcMain.handle(gameBridgeActionChannel, (_event, payload: unknown) => gameBridge?.execute(payload))
+  ipcMain.handle(gameBridgeStopChannel, () => gameBridge?.emergencyStop())
+  ipcMain.handle(gameBridgeCheckpointsChannel, (_event, payload: { limit?: unknown }) => listGameCheckpoints(app.getPath('userData'), payload?.limit))
   ipcMain.handle(workspaceLoadChannel, () => loadWorkspaceManagerState(app.getPath('userData'), workspaceSessionWasUnclean))
   ipcMain.handle(workspaceCreateChannel, (_event, payload: { name?: unknown; workspace?: unknown }) => createWorkspace(app.getPath('userData'), payload?.name, payload?.workspace))
   ipcMain.handle(workspaceRenameChannel, (_event, payload: { workspaceId?: unknown; name?: unknown }) => renameWorkspace(app.getPath('userData'), payload?.workspaceId, payload?.name))

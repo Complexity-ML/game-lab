@@ -29,8 +29,42 @@ const validProposal = {
 }
 
 describe('strict provider proposal contract', () => {
+  it('accepts only checkpoint-bound reviewed gameplay actions for a Game Agent card', () => {
+    const gamePayload = {
+      graph: {
+        nodes: [{ id: 'game-agent-1', kind: 'agent' }],
+        edges: [],
+      },
+      gameRuntime: { connected: true, checkpointId: 'checkpoint-42' },
+    }
+    const review = { type: 'add_card', node_id: 'review-game-action', kind: 'review', label: 'Review movement', description: 'Approve one private-shard movement.', owner: 'Operator', rule: null, source: null, target: null, source_handle: null, reason: 'Gameplay changes external state.' }
+    const gameAction = {
+      type: 'game_action',
+      node_id: 'game-agent-1',
+      kind: null,
+      label: null,
+      description: null,
+      owner: null,
+      rule: null,
+      source: null,
+      target: null,
+      source_handle: null,
+      game_action: 'move_to',
+      game_action_args: { target_x: 10, target_y: 20, target_z: 30, entity_id: null, route_id: null, interaction: null, duration_ms: null },
+      checkpoint_id: 'checkpoint-42',
+      reason: 'Move to the visible mission checkpoint.',
+    }
+    const proposal = { ...validProposal, requires_human_review: true, actions: [review, gameAction] }
+
+    expect(validateProposal(proposal, gamePayload).actions[1]).toMatchObject({ type: 'game_action', checkpoint_id: 'checkpoint-42' })
+    expect(() => validateProposal({ ...proposal, actions: [review, { ...gameAction, checkpoint_id: 'stale-checkpoint' }] }, gamePayload)).toThrow('current connected Game Bridge checkpoint')
+    expect(() => validateProposal({ ...proposal, requires_human_review: false, actions: [gameAction] }, gamePayload)).toThrow('requires_human_review=true')
+  })
+
   it('accepts a bounded, complete and internally consistent proposal', () => {
-    expect(validateProposal(validProposal, payload)).toEqual(validProposal)
+    const result = validateProposal(validProposal, payload)
+    expect(result).toMatchObject(validProposal)
+    expect(result.actions.every((action) => action.game_action === null && action.game_action_args === null && action.checkpoint_id === null)).toBe(true)
   })
 
   it('repairs only non-structural add-card metadata when the provider returns null', () => {

@@ -1,6 +1,6 @@
 type JsonRecord = Record<string, unknown>
 
-export type ProposalActionType = 'add_card' | 'update_card' | 'add_edge' | 'remove_edge'
+export type ProposalActionType = 'add_card' | 'update_card' | 'add_edge' | 'remove_edge' | 'game_action'
 export type ProposalCardKind = 'control' | 'explorer' | 'worker' | 'query' | 'server' | 'agent' | 'source' | 'profile' | 'analysis' | 'impact' | 'risk' | 'patch' | 'monitor' | 'parallel' | 'diagram' | 'split' | 'decision' | 'transform' | 'review' | 'validation' | 'output'
 
 export interface ValidatedProposalAction {
@@ -14,6 +14,17 @@ export interface ValidatedProposalAction {
   source: string | null
   target: string | null
   source_handle: string | null
+  game_action: 'move_to' | 'follow_route' | 'interact' | 'enter_vehicle' | 'exit_vehicle' | 'wait' | 'stop' | null
+  game_action_args: {
+    target_x: number | null
+    target_y: number | null
+    target_z: number | null
+    entity_id: string | null
+    route_id: string | null
+    interaction: string | null
+    duration_ms: number | null
+  } | null
+  checkpoint_id: string | null
   reason: string
 }
 
@@ -29,9 +40,10 @@ export interface ValidatedProposal {
 }
 
 const rootKeys = ['title', 'summary', 'rationale', 'requires_human_review', 'confidence', 'writeback', 'evidence', 'actions'] as const
-const actionKeys = ['type', 'node_id', 'kind', 'label', 'description', 'owner', 'rule', 'source', 'target', 'source_handle', 'reason'] as const
+const actionKeys = ['type', 'node_id', 'kind', 'label', 'description', 'owner', 'rule', 'source', 'target', 'source_handle', 'game_action', 'game_action_args', 'checkpoint_id', 'reason'] as const
 const kinds = new Set<ProposalCardKind>(['control', 'explorer', 'worker', 'query', 'server', 'agent', 'source', 'profile', 'analysis', 'impact', 'risk', 'patch', 'monitor', 'parallel', 'diagram', 'split', 'decision', 'transform', 'review', 'validation', 'output'])
-const actionTypes = new Set<ProposalActionType>(['add_card', 'update_card', 'add_edge', 'remove_edge'])
+const actionTypes = new Set<ProposalActionType>(['add_card', 'update_card', 'add_edge', 'remove_edge', 'game_action'])
+const gameActionTypes = new Set<NonNullable<ValidatedProposalAction['game_action']>>(['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'wait', 'stop'])
 const cardNames: Record<ProposalCardKind, string> = { control: 'GAME LAB Control', explorer: 'World Explorer', worker: 'Mission Worker', query: 'Telemetry Query', server: 'Game Server', agent: 'Game Agent', source: 'Evidence Source', profile: 'Telemetry Snapshot', analysis: 'Game Analysis', impact: 'Player Impact', risk: 'Operational Risk', patch: 'Server Patch', monitor: 'Live Monitor', parallel: 'Parallel Agents', diagram: 'Incident Diagram', split: 'Split', decision: 'Agent Decision', transform: 'Action Transform', review: 'Human Review', validation: 'Safety Check', output: 'Game Result' }
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const maximumNodes = 400
@@ -203,6 +215,28 @@ function sourceHandle(value: unknown, label: string): 'approved' | 'quarantine' 
   throw new Error(`${label} must be null, approved, quarantine or feedback`)
 }
 
+function nullableFiniteNumber(value: unknown, label: string, minimum: number, maximum: number): number | null {
+  if (value === null) return null
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum) throw new Error(`${label} must be null or a number between ${minimum} and ${maximum}`)
+  return value
+}
+
+function gameActionArguments(value: unknown, label: string): ValidatedProposalAction['game_action_args'] {
+  if (value === null) return null
+  const input = record(value, label)
+  const keys = ['target_x', 'target_y', 'target_z', 'entity_id', 'route_id', 'interaction', 'duration_ms'] as const
+  exactKeys(input, keys, label)
+  return {
+    target_x: nullableFiniteNumber(input.target_x, `${label} target_x`, -100_000, 100_000),
+    target_y: nullableFiniteNumber(input.target_y, `${label} target_y`, -100_000, 100_000),
+    target_z: nullableFiniteNumber(input.target_z, `${label} target_z`, -10_000, 100_000),
+    entity_id: identifier(input.entity_id, `${label} entity_id`, true),
+    route_id: identifier(input.route_id, `${label} route_id`, true),
+    interaction: text(input.interaction, `${label} interaction`, 120, true),
+    duration_ms: nullableFiniteNumber(input.duration_ms, `${label} duration_ms`, 0, 60_000),
+  }
+}
+
 function compactGraph(payload: unknown) {
   const input = record(payload, 'Agent request')
   const graph = record(input.graph, 'Agent request graph')
@@ -238,7 +272,10 @@ function compactGraph(payload: unknown) {
 }
 
 function validateAction(value: unknown, index: number): ValidatedProposalAction {
-  const action = record(value, `Proposal action ${index + 1}`)
+  const action = { ...record(value, `Proposal action ${index + 1}`) }
+  if (!Object.hasOwn(action, 'game_action')) action.game_action = null
+  if (!Object.hasOwn(action, 'game_action_args')) action.game_action_args = null
+  if (!Object.hasOwn(action, 'checkpoint_id')) action.checkpoint_id = null
   exactKeys(action, actionKeys, `Proposal action ${index + 1}`)
   if (!actionTypes.has(action.type as ProposalActionType)) throw new Error(`Proposal action ${index + 1} has an unknown type`)
   if (action.kind !== null && !kinds.has(action.kind as ProposalCardKind)) throw new Error(`Proposal action ${index + 1} has an unknown card kind`)
@@ -253,6 +290,9 @@ function validateAction(value: unknown, index: number): ValidatedProposalAction 
     source: identifier(action.source, `Proposal action ${index + 1} source`, true),
     target: identifier(action.target, `Proposal action ${index + 1} target`, true),
     source_handle: sourceHandle(action.source_handle, `Proposal action ${index + 1} source_handle`),
+    game_action: action.game_action === null ? null : gameActionTypes.has(action.game_action as NonNullable<ValidatedProposalAction['game_action']>) ? action.game_action as NonNullable<ValidatedProposalAction['game_action']> : (() => { throw new Error(`Proposal action ${index + 1} has an unknown game action`) })(),
+    game_action_args: gameActionArguments(action.game_action_args, `Proposal action ${index + 1} game_action_args`),
+    checkpoint_id: identifier(action.checkpoint_id, `Proposal action ${index + 1} checkpoint_id`, true),
     reason: text(action.reason, `Proposal action ${index + 1} reason`, 500)!,
   }
 }
@@ -285,12 +325,21 @@ export function validateProposal(value: unknown, payload: unknown): ValidatedPro
   let addedEdgeCount = 0
 
   for (const [index, action] of actions.entries()) {
+    if (action.type === 'game_action') {
+      if (!action.node_id || !nodeIds.has(action.node_id) || nodeKinds.get(action.node_id) !== 'agent') throw new Error(`Proposal action ${index + 1} must target an existing Game Agent card`)
+      if (!action.game_action || !action.game_action_args || !action.checkpoint_id) throw new Error(`Proposal action ${index + 1} requires an allowlisted game action, bounded arguments and checkpoint_id`)
+      requireNull(action, ['kind', 'label', 'description', 'owner', 'rule', 'source', 'target', 'source_handle'], index)
+      const request = record(payload, 'Agent request')
+      const runtime = record(request.gameRuntime, 'Agent request gameRuntime')
+      if (runtime.connected !== true || runtime.checkpointId !== action.checkpoint_id) throw new Error(`Proposal action ${index + 1} must use the current connected Game Bridge checkpoint`)
+      continue
+    }
     if (action.type === 'add_card') {
       if (!action.node_id || !action.kind) throw new Error(`Proposal action ${index + 1} add_card requires a safe node_id and card kind`)
       action.label ??= cardNames[action.kind]
       action.description ??= `Agent-proposed ${cardNames[action.kind]} awaiting graph review.`
       action.owner ??= 'GAME LAB Agent'
-      requireNull(action, ['source', 'target', 'source_handle'], index)
+      requireNull(action, ['source', 'target', 'source_handle', 'game_action', 'game_action_args', 'checkpoint_id'], index)
       if (action.kind === 'risk') {
         const error = riskAssessmentRuleError(action.rule)
         if (error) throw new Error(`Proposal action ${index + 1} · ${error}`)
@@ -313,7 +362,7 @@ export function validateProposal(value: unknown, payload: unknown): ValidatedPro
     }
     if (action.type === 'update_card') {
       if (!action.node_id || !nodeIds.has(action.node_id)) throw new Error(`Proposal action ${index + 1} references an unknown card`)
-      requireNull(action, ['source', 'target', 'source_handle'], index)
+      requireNull(action, ['source', 'target', 'source_handle', 'game_action', 'game_action_args', 'checkpoint_id'], index)
       if ((action.kind === 'risk' || riskNodeIds.has(action.node_id)) && (action.kind === 'risk' || action.rule !== null)) {
         const error = riskAssessmentRuleError(action.rule)
         if (error) throw new Error(`Proposal action ${index + 1} · ${error}`)
@@ -334,12 +383,12 @@ export function validateProposal(value: unknown, payload: unknown): ValidatedPro
     }
     if (action.type === 'remove_edge') {
       if (!action.node_id || !edgeIds.has(action.node_id) || removedEdges.has(action.node_id)) throw new Error(`Proposal action ${index + 1} references an unknown or duplicate edge removal`)
-      requireNull(action, ['kind', 'label', 'description', 'owner', 'rule', 'source', 'target', 'source_handle'], index)
+      requireNull(action, ['kind', 'label', 'description', 'owner', 'rule', 'source', 'target', 'source_handle', 'game_action', 'game_action_args', 'checkpoint_id'], index)
       removedEdges.add(action.node_id)
       continue
     }
     if (!action.source || !action.target || action.source === action.target) throw new Error(`Proposal action ${index + 1} has invalid edge endpoints`)
-    requireNull(action, ['node_id', 'kind', 'label', 'description', 'owner', 'rule'], index)
+    requireNull(action, ['node_id', 'kind', 'label', 'description', 'owner', 'rule', 'game_action', 'game_action_args', 'checkpoint_id'], index)
     if ((!nodeIds.has(action.source) && !aliases.has(action.source)) || (!nodeIds.has(action.target) && !aliases.has(action.target))) throw new Error(`Proposal action ${index + 1} contains a dangling edge`)
     if (allExplorerNodeIds.has(action.source) || allExplorerNodeIds.has(action.target)) throw new Error(`Proposal action ${index + 1} cannot connect the host-owned Catalog Explorer sidecar to dataset lineage`)
     if (action.source_handle && !['approved', 'quarantine', 'feedback'].includes(action.source_handle)) throw new Error(`Proposal action ${index + 1} has an invalid source handle`)
@@ -357,6 +406,7 @@ export function validateProposal(value: unknown, payload: unknown): ValidatedPro
     && /(?:^|\|)\s*mode\s*=\s*governed_write\b/i.test(action.rule)
     && (action.kind === 'query' || Boolean(action.node_id && queryNodeIds.has(action.node_id))))
   if (includesGovernedQueryWrite && !proposal.requires_human_review) throw new Error('Governed Query Check writes require requires_human_review=true and a Human Review card action')
+  if (actions.some((action) => action.type === 'game_action') && !proposal.requires_human_review) throw new Error('Gameplay actions require requires_human_review=true and a Human Review card action')
   if (proposal.requires_human_review && !includesReview) throw new Error('Human Review was requested without a Human Review card action')
   if (!proposal.requires_human_review && includesReview) throw new Error('Human Review card actions require requires_human_review=true')
   const request = record(payload, 'Agent request')

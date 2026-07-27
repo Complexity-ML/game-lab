@@ -205,6 +205,14 @@ button { color: inherit; }
 .datahub-writeback-toggle small { color: var(--muted); font-size: 7px; line-height: 1.45; }
 .datahub-writeback-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
 .settings-note { margin-top: 12px; padding: 12px 14px; border-left: 3px solid var(--accent); border-radius: 8px; background: var(--accent-soft); }
+.game-observation-summary { display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.game-observation-summary > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.game-observation-summary strong { font-size: 10px; }
+.game-observation-summary small { color: var(--muted); font-size: 8px; line-height: 1.5; }
+.game-checkpoint-list { display: grid; gap: 6px; }
+.game-checkpoint-list > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.game-checkpoint-list span { color: var(--text); font-size: 9px; font-weight: 700; }
+.game-checkpoint-list small { overflow: hidden; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .diagnostics-settings { display: flex; flex-direction: column; gap: 14px; }
 .diagnostics-privacy { display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; gap: 11px; padding: 12px; color: #15803d; border: 1px solid #86efac; border-radius: 10px; background: #dcfce7; }
 .diagnostics-privacy > div { display: flex; flex-direction: column; gap: 3px; }

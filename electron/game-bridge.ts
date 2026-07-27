@@ -1,0 +1,249 @@
+import { createHash, randomUUID } from 'node:crypto'
+
+export const GAME_BRIDGE_PROTOCOL = 'game-lab.control.v1' as const
+const DEFAULT_ENDPOINT = 'http://127.0.0.1:4317'
+const TIMEOUT_MS = 4_000
+const MAX_RESPONSE_BYTES = 256_000
+const actionTypes = new Set(['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'wait', 'stop'])
+
+type SettingsStore = {
+  load(key: string): string | null
+  save(key: string, value: string): void
+}
+
+type CheckpointStore = {
+  save(input: {
+    kind: 'observation' | 'action'
+    checkpointId: string
+    observationId?: string
+    commandId?: string
+    action?: string
+    status: string
+    summary: string
+  }): unknown
+}
+
+type JsonRecord = Record<string, unknown>
+
+function record(value: unknown, label: string): JsonRecord {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be an object`)
+  return value as JsonRecord
+}
+
+function boundedText(value: unknown, label: string, maximum: number, fallback?: string) {
+  if (typeof value !== 'string' || !value.trim()) {
+    if (fallback !== undefined) return fallback
+    throw new Error(`${label} is required`)
+  }
+  return value.trim().slice(0, maximum)
+}
+
+function boundedNumber(value: unknown, label: string, minimum: number, maximum: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${label} must be a finite number`)
+  return Math.max(minimum, Math.min(maximum, value))
+}
+
+function optionalBoundedNumber(value: unknown, label: string, minimum: number, maximum: number) {
+  return value === null || value === undefined ? undefined : boundedNumber(value, label, minimum, maximum)
+}
+
+function optionalIdentifier(value: unknown, label: string) {
+  if (value === null || value === undefined || value === '') return undefined
+  const result = boundedText(value, label, 120)
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(result)) throw new Error(`${label} is not a safe identifier`)
+  return result
+}
+
+function safeEndpoint(value: unknown) {
+  const input = typeof value === 'string' && value.trim() ? value.trim() : DEFAULT_ENDPOINT
+  let url: URL
+  try { url = new URL(input) } catch { throw new Error('Game Bridge endpoint must be a valid URL') }
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(hostname)) {
+    throw new Error('Game Bridge v1 accepts only a local HTTP endpoint on this machine')
+  }
+  if (url.username || url.password || url.search || url.hash) throw new Error('Game Bridge endpoint cannot contain credentials, query parameters or fragments')
+  url.pathname = url.pathname.replace(/\/+$/, '')
+  return url.toString().replace(/\/$/, '')
+}
+
+async function jsonRequest(endpoint: string, path: string, init?: RequestInit) {
+  const response = await fetch(`${endpoint}${path}`, {
+    ...init,
+    headers: { accept: 'application/json', 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  })
+  const body = await response.text()
+  if (Buffer.byteLength(body, 'utf8') > MAX_RESPONSE_BYTES) throw new Error('Game Bridge response exceeds 256 KB')
+  if (!response.ok) throw new Error(`Game Bridge ${response.status}: ${body.slice(0, 240) || response.statusText}`)
+  try { return JSON.parse(body) as unknown } catch { throw new Error('Game Bridge returned invalid JSON') }
+}
+
+function normalizeStatus(value: unknown, endpoint: string) {
+  const input = record(value, 'Game Bridge status')
+  if (input.protocol !== GAME_BRIDGE_PROTOCOL) throw new Error(`Unsupported Game Bridge protocol: ${String(input.protocol ?? 'missing')}`)
+  return {
+    mode: 'connected' as const,
+    protocol: GAME_BRIDGE_PROTOCOL,
+    endpoint,
+    message: boundedText(input.message, 'Game Bridge status message', 280, 'Local game adapter connected'),
+    game: typeof input.game === 'string' ? input.game.trim().slice(0, 80) : undefined,
+    adapterVersion: typeof input.adapterVersion === 'string' ? input.adapterVersion.trim().slice(0, 40) : undefined,
+    sessionId: optionalIdentifier(input.sessionId, 'Game Bridge session ID'),
+    lastObservationAt: typeof input.lastObservationAt === 'string' ? input.lastObservationAt.slice(0, 40) : undefined,
+  }
+}
+
+function normalizeObservation(value: unknown) {
+  const input = record(value, 'Game observation')
+  const player = record(input.player, 'Game observation player')
+  const position = record(player.position, 'Game observation player position')
+  const mission = record(input.mission, 'Game observation mission')
+  const environment = record(input.environment, 'Game observation environment')
+  if (input.protocol !== GAME_BRIDGE_PROTOCOL) throw new Error('Game observation uses an unsupported protocol')
+  const threatLevel = ['none', 'low', 'medium', 'high'].includes(String(environment.threatLevel)) ? environment.threatLevel as 'none' | 'low' | 'medium' | 'high' : 'none'
+  const nearby = Array.isArray(input.nearby) ? input.nearby.slice(0, 32).map((entry, index) => {
+    const item = record(entry, `Nearby entity ${index + 1}`)
+    const kind = ['player', 'npc', 'vehicle', 'object', 'checkpoint'].includes(String(item.kind)) ? item.kind as 'player' | 'npc' | 'vehicle' | 'object' | 'checkpoint' : 'object'
+    return {
+      id: optionalIdentifier(item.id, `Nearby entity ${index + 1} id`) ?? `entity-${index + 1}`,
+      kind,
+      distance: boundedNumber(item.distance, `Nearby entity ${index + 1} distance`, 0, 10_000),
+      state: typeof item.state === 'string' ? item.state.trim().slice(0, 120) : undefined,
+    }
+  }) : []
+  return {
+    protocol: GAME_BRIDGE_PROTOCOL,
+    observationId: optionalIdentifier(input.observationId, 'Observation ID') ?? `observation-${randomUUID()}`,
+    checkpointId: optionalIdentifier(input.checkpointId, 'Checkpoint ID') ?? `checkpoint-${randomUUID()}`,
+    capturedAt: boundedText(input.capturedAt, 'Observation timestamp', 40, new Date().toISOString()),
+    sessionId: optionalIdentifier(input.sessionId, 'Observation session ID') ?? 'local-session',
+    player: {
+      position: {
+        x: boundedNumber(position.x, 'Player x', -100_000, 100_000),
+        y: boundedNumber(position.y, 'Player y', -100_000, 100_000),
+        z: boundedNumber(position.z, 'Player z', -10_000, 100_000),
+      },
+      heading: boundedNumber(player.heading, 'Player heading', 0, 360),
+      speed: boundedNumber(player.speed, 'Player speed', 0, 1_000),
+      health: boundedNumber(player.health, 'Player health', 0, 10_000),
+      armor: boundedNumber(player.armor, 'Player armor', 0, 10_000),
+      inVehicle: player.inVehicle === true,
+    },
+    mission: {
+      id: optionalIdentifier(mission.id, 'Mission ID'),
+      objective: boundedText(mission.objective, 'Mission objective', 500, 'Observe the authorized private session'),
+      stage: boundedText(mission.stage, 'Mission stage', 120, 'unknown'),
+      completed: mission.completed === true,
+    },
+    environment: {
+      area: boundedText(environment.area, 'Environment area', 120, 'unknown'),
+      weather: typeof environment.weather === 'string' ? environment.weather.trim().slice(0, 80) : undefined,
+      time: typeof environment.time === 'string' ? environment.time.trim().slice(0, 40) : undefined,
+      threatLevel,
+    },
+    nearby,
+  }
+}
+
+function normalizeCommand(value: unknown) {
+  const input = record(value, 'Game action')
+  const args = record(input.arguments ?? {}, 'Game action arguments')
+  const action = boundedText(input.action, 'Game action type', 40)
+  if (!actionTypes.has(action)) throw new Error('Game action is not allowlisted')
+  const checkpointId = optionalIdentifier(input.checkpointId, 'Game action checkpoint ID')
+  if (!checkpointId) throw new Error('Game action requires the exact observation checkpoint ID')
+  return {
+    commandId: optionalIdentifier(input.commandId, 'Game action command ID') ?? `command-${randomUUID()}`,
+    checkpointId,
+    action,
+    arguments: {
+      targetX: optionalBoundedNumber(args.targetX, 'targetX', -100_000, 100_000),
+      targetY: optionalBoundedNumber(args.targetY, 'targetY', -100_000, 100_000),
+      targetZ: optionalBoundedNumber(args.targetZ, 'targetZ', -10_000, 100_000),
+      entityId: optionalIdentifier(args.entityId, 'entityId'),
+      routeId: optionalIdentifier(args.routeId, 'routeId'),
+      interaction: typeof args.interaction === 'string' ? args.interaction.trim().slice(0, 120) : undefined,
+      durationMs: optionalBoundedNumber(args.durationMs, 'durationMs', 0, 60_000),
+    },
+    requestedAt: new Date().toISOString(),
+  }
+}
+
+export class GameBridgeClient {
+  constructor(private readonly settings: SettingsStore, private readonly checkpoints: CheckpointStore) {}
+
+  configuration() {
+    return { endpoint: safeEndpoint(this.settings.load('game-bridge-endpoint') ?? DEFAULT_ENDPOINT) }
+  }
+
+  saveConfiguration(value: unknown) {
+    const input = record(value, 'Game Bridge settings')
+    const endpoint = safeEndpoint(input.endpoint)
+    this.settings.save('game-bridge-endpoint', endpoint)
+    return { endpoint }
+  }
+
+  async status() {
+    const { endpoint } = this.configuration()
+    try {
+      return normalizeStatus(await jsonRequest(endpoint, '/v1/status'), endpoint)
+    } catch (error) {
+      return {
+        mode: 'disconnected' as const,
+        protocol: GAME_BRIDGE_PROTOCOL,
+        endpoint,
+        message: error instanceof Error ? error.message : 'Game Bridge is unavailable',
+      }
+    }
+  }
+
+  async observation() {
+    const { endpoint } = this.configuration()
+    const observation = normalizeObservation(await jsonRequest(endpoint, '/v1/observation'))
+    const summary = `session=${observation.sessionId}; mission=${observation.mission.stage}; area=${observation.environment.area}; health=${observation.player.health}; nearby=${observation.nearby.length}`
+    this.checkpoints.save({
+      kind: 'observation',
+      checkpointId: observation.checkpointId,
+      observationId: observation.observationId,
+      status: 'captured',
+      summary,
+    })
+    return observation
+  }
+
+  async execute(value: unknown) {
+    const { endpoint } = this.configuration()
+    const command = normalizeCommand(value)
+    const response = record(await jsonRequest(endpoint, '/v1/actions', { method: 'POST', body: JSON.stringify(command) }), 'Game action receipt')
+    const status = ['accepted', 'completed', 'rejected', 'failed', 'stopped'].includes(String(response.status)) ? response.status as 'accepted' | 'completed' | 'rejected' | 'failed' | 'stopped' : 'failed'
+    const receipt = {
+      commandId: command.commandId,
+      checkpointId: command.checkpointId,
+      action: command.action,
+      status,
+      summary: boundedText(response.summary, 'Game action receipt summary', 500, `${command.action} ${status}`),
+      receivedAt: new Date().toISOString(),
+    }
+    this.checkpoints.save({
+      kind: 'action',
+      checkpointId: receipt.checkpointId,
+      commandId: receipt.commandId,
+      action: receipt.action,
+      status: receipt.status,
+      summary: receipt.summary,
+    })
+    return receipt
+  }
+
+  async emergencyStop() {
+    const { endpoint } = this.configuration()
+    const commandId = `stop-${createHash('sha256').update(`${Date.now()}:${randomUUID()}`).digest('hex').slice(0, 20)}`
+    try {
+      const response = record(await jsonRequest(endpoint, '/v1/stop', { method: 'POST', body: JSON.stringify({ commandId, requestedAt: new Date().toISOString() }) }), 'Emergency stop receipt')
+      return { stopped: response.stopped !== false, commandId, summary: boundedText(response.summary, 'Emergency stop summary', 500, 'Game adapter stopped') }
+    } catch (error) {
+      return { stopped: false, commandId, summary: error instanceof Error ? error.message : 'Game adapter stop failed' }
+    }
+  }
+}

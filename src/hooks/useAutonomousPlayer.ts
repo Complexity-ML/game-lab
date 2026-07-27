@@ -269,6 +269,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
     let blankCandidate: DataHubAssetSummary | undefined
     let catalogProgress: CatalogExplorationProgress | undefined
     let continueCatalogWithoutModel = false
+    let gameRuntime: Parameters<typeof buildPipelineAgentRequest>[0]['gameRuntime']
     const profileCandidates = new Map<string, DataHubAssetSummary>()
     try {
       if (routedSources.length > 0) {
@@ -614,6 +615,30 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         return
       }
 
+      if (gameServers.length > 0) {
+        const bridgeStatus = await window.dataLab.getGameBridgeStatus().catch((error) => ({
+          mode: 'disconnected' as const,
+          message: errorMessage(error, 'Game Bridge status unavailable'),
+        }))
+        if (bridgeStatus.mode === 'connected') {
+          try {
+            const observation = await window.dataLab.getGameObservation()
+            gameRuntime = {
+              connected: true,
+              checkpointId: observation.checkpointId,
+              observation,
+              message: `Fresh structured observation ${observation.observationId} captured at ${observation.capturedAt}.`,
+            }
+            datahubEvidence = datahubEvidence.filter((item) => !item.startsWith('Authorized private game server'))
+            datahubEvidence.unshift(`Game Bridge checkpoint ${observation.checkpointId}: mission=${observation.mission.objective}; stage=${observation.mission.stage}; area=${observation.environment.area}; health=${observation.player.health}; armor=${observation.player.armor}; speed=${observation.player.speed}; threat=${observation.environment.threatLevel}; nearby=${observation.nearby.length}.`)
+          } catch (error) {
+            gameRuntime = { connected: false, message: errorMessage(error, 'Game Bridge observation unavailable') }
+          }
+        } else {
+          gameRuntime = { connected: false, message: bridgeStatus.message }
+        }
+      }
+
       const activeModel = activeAiSource === 'chatgpt'
         ? currentChatGPT.selectedModel ?? 'ChatGPT'
         : currentAiStatus.providers[activeAiSource].model
@@ -631,6 +656,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         autonomyPolicy,
         datahubEvidence,
         edges,
+        gameRuntime,
         incidentContext: incidentSummaries,
         issues,
         nodes: executionNodes,
@@ -1135,6 +1161,9 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       : 'Autonomous player stopped · monitoring disabled · graph unchanged')
     if (window.dataLab) void window.dataLab.cancelAiProposal()
     if (window.dataLab) void window.dataLab.cancelChatGPTProposal()
+    if (window.dataLab && nodes.some((node) => node.data.kind === 'server' || node.data.kind === 'agent')) void window.dataLab.emergencyStopGameBridge().then((result) => {
+      if (!result.stopped) notifyToast(result.summary, 'error', 'Game Bridge stop failed')
+    })
   }
 
   const rejectAgentProposal = () => {
@@ -1239,6 +1268,42 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       }
       if (!approveProposal()) return false
       await window.dataLab?.updateAgentProposalMemoryStatus(graphFingerprint(preview.nodes, preview.edges), 'committed', revisionId).catch(() => undefined)
+      if (currentProposal.gameActions?.length) {
+        if (!window.dataLab) throw new Error('Approved gameplay actions require the Electron Game Bridge')
+        setActivity(`Human Review approved · executing ${currentProposal.gameActions.length} allowlisted game action${currentProposal.gameActions.length === 1 ? '' : 's'}…`)
+        for (const gameAction of currentProposal.gameActions) {
+          const receipt = await window.dataLab.executeGameAction(gameAction).catch((error) => ({
+            commandId: gameAction.commandId,
+            checkpointId: gameAction.checkpointId,
+            action: gameAction.action,
+            status: 'failed' as const,
+            summary: errorMessage(error, 'Game Bridge action failed'),
+            receivedAt: new Date().toISOString(),
+          }))
+          setNodes((current) => current.map((node) => node.id === gameAction.agentNodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  agentTelemetry: node.data.agentTelemetry
+                    ? {
+                        ...node.data.agentTelemetry,
+                        state: receipt.status === 'accepted' ? 'acting' : receipt.status === 'completed' ? 'observing' : 'blocked',
+                        lastAction: `${receipt.action} · ${receipt.status} · ${receipt.summary}`,
+                      }
+                    : node.data.agentTelemetry,
+                },
+              }
+            : node))
+          if (!['accepted', 'completed'].includes(receipt.status)) {
+            setPlayerState('paused')
+            autonomousSchedulingBlocked.current = true
+            setActivity(`Game action ${receipt.action} ${receipt.status} · ${receipt.summary} · player paused`)
+            notifyToast(receipt.summary, 'error', `Game action ${receipt.status}`)
+            return true
+          }
+        }
+      }
       atomicRepairState.current = undefined
       if (currentProposal.incidentKey && revisionId) {
         const incident = incidentSummaries.find((candidate) => candidate.incidentKey === currentProposal.incidentKey)

@@ -79,6 +79,25 @@ export const agentToolDefinitions = [
   },
   {
     type: 'function',
+    name: 'queue_game_action',
+    description: 'Queue one allowlisted action for an existing Game Agent card against the exact current observation checkpoint. A Human Review card must already be queued and finish_plan must require review.',
+    strict: true,
+    parameters: objectSchema({
+      node_id: { type: 'string' },
+      game_action: { type: 'string', enum: ['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'wait', 'stop'] },
+      checkpoint_id: { type: 'string' },
+      target_x: { type: ['number', 'null'] },
+      target_y: { type: ['number', 'null'] },
+      target_z: { type: ['number', 'null'] },
+      entity_id: nullableText,
+      route_id: nullableText,
+      interaction: nullableText,
+      duration_ms: { type: ['number', 'null'] },
+      reason: { type: 'string' },
+    }),
+  },
+  {
+    type: 'function',
     name: 'connect_cards',
     description: 'Queue one connection. Use approved/quarantine only from Split and feedback only from Output to Live Monitor; otherwise use null.',
     strict: true,
@@ -398,6 +417,7 @@ export class AgentToolSession {
           },
           source_scope: record(record(this.payload).sourceScope),
           autonomy_policy: record(record(this.payload).autonomyPolicy),
+          game_runtime: record(record(this.payload).gameRuntime),
           catalog_checkpoints: (Array.isArray(record(this.payload).catalogCheckpoints)
             ? record(this.payload).catalogCheckpoints as unknown[]
             : []).map(record).map((checkpoint) => ({
@@ -477,6 +497,9 @@ export class AgentToolSession {
           source: null,
           target: null,
           source_handle: null,
+          game_action: null,
+          game_action_args: null,
+          checkpoint_id: null,
           reason: requiredText(args.reason, 'reason', 500),
         })
       }
@@ -516,6 +539,39 @@ export class AgentToolSession {
           source: null,
           target: null,
           source_handle: null,
+          game_action: null,
+          game_action_args: null,
+          checkpoint_id: null,
+          reason: requiredText(args.reason, 'reason', 500),
+        })
+      }
+      if (tool === 'queue_game_action') {
+        const nodeId = requiredText(args.node_id, 'node_id', 120)
+        if (this.kindOf(nodeId) !== 'agent') throw new Error('queue_game_action requires an existing Game Agent card')
+        const gameAction = requiredText(args.game_action, 'game_action', 40) as ValidatedProposalAction['game_action']
+        if (!['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'wait', 'stop'].includes(gameAction ?? '')) throw new Error('Unknown or unsafe game action')
+        return this.validateCandidate(tool, {
+          type: 'game_action',
+          node_id: nodeId,
+          kind: null,
+          label: null,
+          description: null,
+          owner: null,
+          rule: null,
+          source: null,
+          target: null,
+          source_handle: null,
+          game_action: gameAction,
+          game_action_args: {
+            target_x: typeof args.target_x === 'number' ? args.target_x : null,
+            target_y: typeof args.target_y === 'number' ? args.target_y : null,
+            target_z: typeof args.target_z === 'number' ? args.target_z : null,
+            entity_id: text(args.entity_id, 120),
+            route_id: text(args.route_id, 120),
+            interaction: text(args.interaction, 120),
+            duration_ms: typeof args.duration_ms === 'number' ? args.duration_ms : null,
+          },
+          checkpoint_id: requiredText(args.checkpoint_id, 'checkpoint_id', 120),
           reason: requiredText(args.reason, 'reason', 500),
         })
       }
@@ -541,6 +597,9 @@ export class AgentToolSession {
           source,
           target,
           source_handle: sourceHandle,
+          game_action: null,
+          game_action_args: null,
+          checkpoint_id: null,
           reason: requiredText(args.reason, 'reason', 500),
         })
       }
@@ -556,6 +615,9 @@ export class AgentToolSession {
           source: null,
           target: null,
           source_handle: null,
+          game_action: null,
+          game_action_args: null,
+          checkpoint_id: null,
           reason: requiredText(args.reason, 'reason', 500),
         })
       }

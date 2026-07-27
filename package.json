@@ -9,6 +9,7 @@
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
+    "bridge:demo": "node examples/game-bridge-demo/server.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:electron": "tsc -p tsconfig.electron.json",

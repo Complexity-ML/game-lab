@@ -16,6 +16,7 @@ import {
   listWorkspaces,
   listIncidentEvents,
   listAgentProposalMemory,
+  listGameCheckpoints,
   loadAppSetting,
   loadCatalogCheckpoint,
   loadSavedWorkspace,
@@ -28,6 +29,7 @@ import {
   resolveWorkspaceRecovery,
   saveAppSetting,
   saveCatalogCheckpoint,
+  saveGameCheckpoint,
   saveWorkspace,
   updateAgentProposalMemoryStatus,
 } from './workspace-db.js'
@@ -91,6 +93,36 @@ describe('SQLite workspace persistence', () => {
     expect(loadCatalogCheckpoint(target, 'catalog:deadbeef')).toEqual(progress)
     beginWorkspaceSession(target)
     expect(loadCatalogCheckpoint(target, 'catalog:deadbeef')).toBeNull()
+  })
+
+  it('stores game observations and action receipts as workspace-scoped SQLite checkpoints', () => {
+    const target = directory('game-checkpoints')
+    saveGameCheckpoint(target, {
+      kind: 'observation',
+      checkpointId: 'checkpoint-1',
+      observationId: 'observation-1',
+      status: 'captured',
+      summary: 'Private shard observation captured',
+    })
+    const workspace = createWorkspace(target, 'Agent arena', { projectTitle: 'Agent arena' })
+    saveGameCheckpoint(target, {
+      kind: 'action',
+      checkpointId: 'checkpoint-1',
+      commandId: 'command-1',
+      action: 'move_to',
+      status: 'accepted',
+      summary: 'Movement accepted',
+    })
+
+    expect(listGameCheckpoints(target)).toMatchObject([
+      { kind: 'action', checkpointId: 'checkpoint-1', commandId: 'command-1', action: 'move_to', status: 'accepted' },
+      { kind: 'observation', checkpointId: 'checkpoint-1', observationId: 'observation-1', status: 'captured' },
+    ])
+
+    createWorkspace(target, 'Other arena', { projectTitle: 'Other arena' })
+    expect(listGameCheckpoints(target)).toEqual([])
+    openWorkspace(target, workspace.activeWorkspaceId!)
+    expect(listGameCheckpoints(target)).toHaveLength(2)
   })
 
   it('stores proposal memory relationally, increments duplicates, and purges an unsaved workbench next session', () => {

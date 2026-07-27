@@ -5,6 +5,7 @@ import { defaultRiskAssessmentRule } from './risk-assessment'
 import { defaultQueryCheckRule } from './query-check'
 import { workerPolicyRule, defaultWorkerPolicy } from './worker-policy'
 import type { DataValueRiskSignal, LineageAssetSummary } from './catalog-connectors'
+import type { GameActionCommand } from './game-bridge'
 
 export type CardKind = 'control' | 'explorer' | 'worker' | 'query' | 'server' | 'agent' | 'source' | 'profile' | 'analysis' | 'impact' | 'risk' | 'patch' | 'monitor' | 'parallel' | 'diagram' | 'split' | 'decision' | 'transform' | 'review' | 'validation' | 'output'
 export type PipelineStatus = 'healthy' | 'warning' | 'blocked' | 'draft'
@@ -208,6 +209,7 @@ export interface AgentProposal {
   updatedNodes: { nodeId: string; patch: Partial<PipelineNodeData>; reason: string }[]
   addedEdges: Edge[]
   removedEdgeIds: string[]
+  gameActions?: Array<GameActionCommand & { agentNodeId: string; reason: string }>
   datahubReads: string[]
   evidence?: DataHubEvidence[]
   writeback: string
