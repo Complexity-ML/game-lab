@@ -678,20 +678,33 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       setActivity(`${bridgeStatus.message} · connect the local Game Bridge before starting`)
       return
     }
-    const resumed = await window.gameLab.resumeGameBridge().catch((error) => ({
-      resumed: false,
-      summary: errorMessage(error, 'Game Bridge resume unavailable'),
-    }))
-    if (!resumed.resumed) {
-      setSettingsSection('connections')
-      setSettingsOpen(true)
-      setActivity(`${resumed.summary} · autonomous player remains stopped`)
-      return
-    }
-    recordActivity(`Game Bridge resumed · ${resumed.summary}`)
+    const resumeBridge = window.gameLab.resumeGameBridge
+    const resumed = typeof resumeBridge === 'function'
+      ? await resumeBridge().catch((error) => ({
+          resumed: false,
+          summary: errorMessage(error, 'Game Bridge resume unavailable'),
+        }))
+      : { resumed: false, summary: 'Game Bridge resume API is not loaded in the current Electron preload' }
+    recordActivity(resumed.resumed
+      ? `Game Bridge resumed · ${resumed.summary}`
+      : `Game Bridge resume compatibility mode · ${resumed.summary}`)
     let observation
     try {
       observation = await window.gameLab.getGameObservation('startup')
+      if (!resumed.resumed && observation.activity?.state === 'stopped') {
+        const compatibilityReceipt = await window.gameLab.executeGameAction({
+          commandId: `resume-compatibility-${Date.now()}`,
+          checkpointId: observation.checkpointId,
+          action: 'wait',
+          arguments: { durationMs: 100 },
+          requestedAt: new Date().toISOString(),
+        })
+        if (!['accepted', 'completed'].includes(compatibilityReceipt.status)) {
+          throw new Error(`Game Bridge compatibility resume failed: ${compatibilityReceipt.summary}`)
+        }
+        recordActivity(`Game Bridge rearmed through compatibility action · ${compatibilityReceipt.summary}`)
+        observation = await window.gameLab.getGameObservation('startup')
+      }
     } catch (error) {
       setSettingsSection('connections')
       setSettingsOpen(true)
