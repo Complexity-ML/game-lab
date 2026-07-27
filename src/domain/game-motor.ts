@@ -4,6 +4,28 @@ export const gameMotorMaximumActions = 20
 
 const survivalActions = new Set<GameActionCommand['action']>(['move_to', 'navigate_to', 'jump', 'stop'])
 
+export type GameMotorPlanStatus = 'running' | 'completed' | 'yielded' | 'paused' | 'stopped' | 'failed'
+export type GameMotorStepStatus = 'queued' | 'running' | 'completed' | 'blocked' | 'failed' | 'skipped'
+
+export interface GameMotorPlanStep {
+  id: string
+  action: GameActionCommand['action']
+  checkpointId: string
+  reason: string
+  status: GameMotorStepStatus
+  summary?: string
+}
+
+export interface GameMotorPlanView {
+  id: string
+  status: GameMotorPlanStatus
+  startedAt: string
+  updatedAt: string
+  completedActions: number
+  currentStep?: number
+  steps: GameMotorPlanStep[]
+}
+
 export interface GameMotorExecutionResult {
   completed: boolean
   completedActions: number
@@ -11,6 +33,26 @@ export interface GameMotorExecutionResult {
   missionCompleted?: boolean
   observation?: GameObservation
   receipt?: GameActionReceipt
+}
+
+export function createGameMotorPlan(
+  actions: Array<Pick<GameActionCommand, 'commandId' | 'checkpointId' | 'action'> & { reason?: string }>,
+  createdAt = new Date().toISOString(),
+): GameMotorPlanView {
+  return {
+    id: `motor-${actions[0]?.commandId ?? createdAt}`,
+    status: 'running',
+    startedAt: createdAt,
+    updatedAt: createdAt,
+    completedActions: 0,
+    steps: actions.slice(0, gameMotorMaximumActions).map((action) => ({
+      id: action.commandId,
+      action: action.action,
+      checkpointId: action.checkpointId,
+      reason: action.reason?.trim() || 'Bounded allowlisted motor step',
+      status: 'queued',
+    })),
+  }
 }
 
 export function gameMotorCheckpoint(

@@ -102,6 +102,13 @@ export function buildLocalNavigationMap(bot: Bot, radius = 5) {
 
 export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
   const position = bot.entity.position
+  const support = bot.blockAt(position.floored().offset(0, -1, 0))
+  const supportBlock = support?.name
+  const surfaceState = support?.boundingBox !== 'block'
+    ? 'airborne' as const
+    : /_leaves$/.test(support.name)
+      ? 'canopy' as const
+      : 'ground' as const
   const entities = Object.values(bot.entities)
     .filter((entity) => entity !== bot.entity && entity.position)
     .map((entity) => {
@@ -188,6 +195,8 @@ export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
       food: bot.food,
       saturation: bot.foodSaturation,
       experienceLevel: bot.experience.level,
+      supportBlock,
+      surfaceState,
       inventory: bot.inventory.items().slice(0, 46).map((item) => ({ name: item.name, count: item.count, slot: item.slot })),
       nearbyBlocks: nearbyBlocks(bot),
       localMap: buildLocalNavigationMap(bot),

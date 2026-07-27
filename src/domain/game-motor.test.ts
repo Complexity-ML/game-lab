@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { gameMotorCheckpoint, gameMotorMaximumActions } from './game-motor'
+import { createGameMotorPlan, gameMotorCheckpoint, gameMotorMaximumActions } from './game-motor'
 import type { GameObservation } from './game-bridge'
 
 const observation: GameObservation = {
@@ -21,6 +21,21 @@ describe('GAME LAB Motor', () => {
 
   it('continues safe deterministic steps from a fresh checkpoint', () => {
     expect(gameMotorCheckpoint(observation, 'mine_block')).toEqual({ continue: true })
+  })
+
+  it('exposes every planned step before local execution starts', () => {
+    const plan = createGameMotorPlan([
+      { commandId: 'step-1', checkpointId: 'checkpoint-1', action: 'move_to', reason: 'Reach the tree.' },
+      { commandId: 'step-2', checkpointId: 'checkpoint-1', action: 'mine_block', reason: 'Gather one log.' },
+    ], '2026-07-28T00:00:00.000Z')
+    expect(plan).toMatchObject({
+      status: 'running',
+      completedActions: 0,
+      steps: [
+        { action: 'move_to', reason: 'Reach the tree.', status: 'queued' },
+        { action: 'mine_block', reason: 'Gather one log.', status: 'queued' },
+      ],
+    })
   })
 
   it('interrupts work but preserves survival movement when danger changes', () => {

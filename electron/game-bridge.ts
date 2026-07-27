@@ -197,6 +197,7 @@ function normalizeObservation(value: unknown) {
   const rawGameState = input.gameState && typeof input.gameState === 'object' && !Array.isArray(input.gameState)
     ? input.gameState as JsonRecord
     : undefined
+  const surfaceStates = new Set(['ground', 'canopy', 'airborne'])
   const gameState = rawGameState?.kind === 'minecraft'
     ? {
         kind: 'minecraft' as const,
@@ -205,6 +206,10 @@ function normalizeObservation(value: unknown) {
         food: boundedNumber(rawGameState.food, 'Minecraft food', 0, 20),
         saturation: boundedNumber(rawGameState.saturation, 'Minecraft saturation', 0, 20),
         experienceLevel: boundedNumber(rawGameState.experienceLevel, 'Minecraft experience level', 0, 1_000_000),
+        supportBlock: typeof rawGameState.supportBlock === 'string' ? rawGameState.supportBlock.trim().slice(0, 100) : undefined,
+        surfaceState: surfaceStates.has(String(rawGameState.surfaceState))
+          ? rawGameState.surfaceState as 'ground' | 'canopy' | 'airborne'
+          : undefined,
         inventory: Array.isArray(rawGameState.inventory) ? rawGameState.inventory.slice(0, 46).map((entry, index) => {
           const item = record(entry, `Minecraft inventory item ${index + 1}`)
           return {

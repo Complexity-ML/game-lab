@@ -13,7 +13,7 @@ import { classifyConnectivityFailure } from '../domain/connectivity'
 import { recordDiagnostic } from '../domain/diagnostics'
 import { autonomousMissionActionBudget, autonomousProposalFingerprint, gameActionRequiresHumanReview, isRecoverableGameActionFailure } from '../domain/game-autonomy'
 import type { GameObservation, GameObservationSource } from '../domain/game-bridge'
-import { gameMotorCheckpoint, gameMotorMaximumActions, type GameMotorExecutionResult } from '../domain/game-motor'
+import { createGameMotorPlan, gameMotorCheckpoint, gameMotorMaximumActions, type GameMotorExecutionResult, type GameMotorPlanStatus, type GameMotorPlanView, type GameMotorStepStatus } from '../domain/game-motor'
 import type { IncidentEventInput, IncidentSummary } from '../domain/incidents'
 import { defaultBlankObjective, resolveAgentObjective } from '../domain/agent-objective'
 import { applyProposal, type AgentProposal, type PipelineNode } from '../domain/pipeline'
@@ -75,7 +75,7 @@ function runtimeEvidence(observation: Awaited<ReturnType<NonNullable<typeof wind
       .slice(0, 24)
       .map((cell) => `${cell.state}@${cell.position.x},${cell.position.y},${cell.position.z}${cell.ground ? `:${cell.ground}` : ''}`)
       .join(', ')
-    evidence.unshift(`Minecraft state: version=${observation.gameState.version}; dimension=${observation.gameState.dimension}; food=${observation.gameState.food}/20; experience_level=${observation.gameState.experienceLevel}; inventory=${observation.gameState.inventory.map((item) => `${item.name}x${item.count}`).join(', ') || 'empty'}; nearby_blocks=${[...new Set(observation.gameState.nearbyBlocks.map((block) => block.name))].slice(0, 24).join(', ') || 'none loaded'}${map ? `; local_map=${map.diameter}x${map.diameter}; walkable=${map.counts.walkable}; blocked=${map.counts.blocked}; hazards=${map.counts.hazard}; drops=${map.counts.drop}; unsafe_cells=${hazardCells || 'none'}` : ''}.`)
+    evidence.unshift(`Minecraft state: version=${observation.gameState.version}; dimension=${observation.gameState.dimension}; food=${observation.gameState.food}/20; experience_level=${observation.gameState.experienceLevel}; surface_state=${observation.gameState.surfaceState ?? 'unknown'}; support_block=${observation.gameState.supportBlock ?? 'unknown'}; inventory=${observation.gameState.inventory.map((item) => `${item.name}x${item.count}`).join(', ') || 'empty'}; nearby_blocks=${[...new Set(observation.gameState.nearbyBlocks.map((block) => block.name))].slice(0, 24).join(', ') || 'none loaded'}${map ? `; local_map=${map.diameter}x${map.diameter}; walkable=${map.counts.walkable}; blocked=${map.counts.blocked}; hazards=${map.counts.hazard}; drops=${map.counts.drop}; unsafe_cells=${hazardCells || 'none'}` : ''}.`)
   }
   return evidence
 }
@@ -92,6 +92,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
   const [agentRunning, setAgentRunning] = useState(false)
   const [playerStarting, setPlayerStarting] = useState(false)
   const [playerState, setPlayerState] = useState<AgentPlayerState>('stopped')
+  const [motorPlan, setMotorPlan] = useState<GameMotorPlanView>()
   const [proposalApprovalBusy, setProposalApprovalBusy] = useState(false)
   const [autonomousStepRequest, setAutonomousStepRequest] = useState<{ objective: string; sessionId: number; stepId: number }>()
   const [autonomousStepScheduled, setAutonomousStepScheduled] = useState(false)
@@ -104,6 +105,50 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
   const autonomousActionCount = useRef(0)
   const autonomousNoProgressCount = useRef(0)
   const nextObservationSource = useRef<GameObservationSource>('autonomous_loop')
+
+  const updateMotorStep = (
+    planId: string,
+    index: number,
+    status: GameMotorStepStatus,
+    details: { checkpointId?: string; summary?: string } = {},
+    planStatus?: GameMotorPlanStatus,
+  ) => {
+    setMotorPlan((current) => {
+      if (!current || current.id !== planId) return current
+      let steps = current.steps.map((step, stepIndex) => stepIndex === index
+        ? { ...step, ...details, status }
+        : step)
+      if (planStatus && !['running', 'paused'].includes(planStatus)) {
+        steps = steps.map((step, stepIndex) => stepIndex > index && step.status === 'queued'
+          ? { ...step, status: 'skipped' as const }
+          : step)
+      }
+      return {
+        ...current,
+        ...(planStatus ? { status: planStatus } : {}),
+        currentStep: index + 1,
+        completedActions: steps.filter((step) => step.status === 'completed').length,
+        steps,
+        updatedAt: new Date().toISOString(),
+      }
+    })
+  }
+
+  const finishMotorPlan = (planId: string, status: GameMotorPlanStatus, skipQueued = false) => {
+    setMotorPlan((current) => {
+      if (!current || current.id !== planId) return current
+      const steps = skipQueued
+        ? current.steps.map((step) => step.status === 'queued' ? { ...step, status: 'skipped' as const } : step)
+        : current.steps
+      return {
+        ...current,
+        status,
+        completedActions: steps.filter((step) => step.status === 'completed').length,
+        steps,
+        updatedAt: new Date().toISOString(),
+      }
+    })
+  }
 
   const queueAutonomousStep = (objective: string, sessionId = playerSessionId.current, delayMs = 650) => {
     if (autonomousSchedulingBlocked.current || playerSessionId.current !== sessionId) return
@@ -128,12 +173,16 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
   ): Promise<GameMotorExecutionResult> => {
     if (!window.gameLab) throw new Error('Gameplay actions require the Electron Game Bridge')
     const plan = gameActions.slice(0, gameMotorMaximumActions)
+    const planView = createGameMotorPlan(plan)
+    const planId = planView.id
+    setMotorPlan(planView)
     let latestObservation = initialObservation
     let completedActions = 0
     recordActivity(`GAME LAB Motor started · ${plan.length} bounded action${plan.length === 1 ? '' : 's'} · one GPT planning turn`)
     for (const [index, plannedAction] of plan.entries()) {
       if (expectedPlayerSessionId !== undefined
         && (playerSessionId.current !== expectedPlayerSessionId || autonomousSchedulingBlocked.current)) {
+        finishMotorPlan(planId, autonomousSchedulingBlocked.current ? 'paused' : 'stopped')
         return {
           completed: false,
           completedActions,
@@ -152,6 +201,10 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       if (latestObservation) {
         const checkpoint = gameMotorCheckpoint(latestObservation, plannedAction.action)
         if (!checkpoint.continue) {
+          updateMotorStep(planId, index, 'blocked', {
+            checkpointId: latestObservation.checkpointId,
+            summary: checkpoint.reason,
+          }, latestObservation.mission.completed ? 'completed' : 'yielded')
           recordActivity(`GAME LAB Motor checkpoint · plan interrupted before ${plannedAction.action.replaceAll('_', ' ')} · ${checkpoint.reason}`)
           return {
             completed: false,
@@ -176,6 +229,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         checkpointId: latestObservation?.checkpointId ?? plannedAction.checkpointId,
         requestedAt: new Date().toISOString(),
       }
+      updateMotorStep(planId, index, 'running', { checkpointId: gameAction.checkpointId })
       setActivity(`GAME LAB Motor · action ${index + 1}/${plan.length} · ${gameAction.action.replaceAll('_', ' ')}`)
       recordActivity(`Motor action ${index + 1}/${plan.length} queued · ${gameAction.action.replaceAll('_', ' ')} · checkpoint ${gameAction.checkpointId}`)
       const receipt = await window.gameLab.executeGameAction(gameAction).catch((error) => ({
@@ -203,10 +257,18 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
           }
         : node))
       if (!['accepted', 'completed'].includes(receipt.status)) {
+        updateMotorStep(planId, index, 'failed', {
+          checkpointId: receipt.checkpointId,
+          summary: receipt.summary,
+        }, 'failed')
         recordActivity('Defensive safety remains armed · only the operator Stop control can disable combat and retreat reflexes')
         return { completed: false, completedActions, receipt, observation: latestObservation }
       }
       completedActions += 1
+      updateMotorStep(planId, index, receipt.status === 'completed' ? 'completed' : 'running', {
+        checkpointId: receipt.checkpointId,
+        summary: receipt.summary,
+      })
       if (receipt.status === 'completed' && plan.length === 1) {
         notifyToast(receipt.summary, 'success', `${receipt.action.replaceAll('_', ' ')} completed`)
       }
@@ -214,6 +276,8 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         latestObservation = await window.gameLab.getGameObservation('post_action')
         recordActivity(`Motor validation ${index + 1}/${plan.length} · checkpoint ${latestObservation.checkpointId} · health ${latestObservation.player.health} · threat ${latestObservation.environment.threatLevel} · ${latestObservation.activity?.state ?? latestObservation.mission.stage}`)
       } catch (error) {
+        const summary = `Post-action validation failed: ${errorMessage(error, 'Game Bridge observation unavailable')}`
+        updateMotorStep(planId, index, 'failed', { summary }, 'failed')
         return {
           completed: false,
           completedActions,
@@ -223,17 +287,23 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
             checkpointId: gameAction.checkpointId,
             action: gameAction.action,
             status: 'failed',
-            summary: `Post-action validation failed: ${errorMessage(error, 'Game Bridge observation unavailable')}`,
+            summary,
             receivedAt: new Date().toISOString(),
           },
         }
       }
+      updateMotorStep(planId, index, 'completed', {
+        checkpointId: latestObservation.checkpointId,
+        summary: `${receipt.summary}${latestObservation.activity?.lastAction ? ` · ${latestObservation.activity.lastAction}` : ''} · validated health ${latestObservation.player.health}, threat ${latestObservation.environment.threatLevel}`,
+      })
       if (latestObservation.mission.completed) {
+        finishMotorPlan(planId, 'completed', true)
         recordActivity(`GAME LAB Motor completed the mission after ${completedActions}/${plan.length} planned actions`)
         return { completed: true, completedActions, missionCompleted: true, observation: latestObservation }
       }
     }
     nextObservationSource.current = 'post_action'
+    finishMotorPlan(planId, 'completed')
     if (plan.length > 1) {
       notifyToast(`${completedActions} actions completed and validated locally.`, 'success', 'GAME LAB Motor completed')
     }
@@ -662,12 +732,23 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
     if (autonomousStepTimer.current !== undefined) window.clearTimeout(autonomousStepTimer.current)
     autonomousStepTimer.current = undefined
     setPlayerState('paused')
+    setMotorPlan((current) => current?.status === 'running'
+      ? { ...current, status: 'paused', updatedAt: new Date().toISOString() }
+      : current)
     setActivity('Autonomous player paused · no new game action will start')
   }
 
   const stopAgent = () => {
     const cancellingActiveRun = agentRunning
     setPlayerState('stopped')
+    setMotorPlan((current) => current?.status === 'running' || current?.status === 'paused'
+      ? {
+          ...current,
+          status: 'stopped',
+          steps: current.steps.map((step) => step.status === 'queued' ? { ...step, status: 'skipped' as const } : step),
+          updatedAt: new Date().toISOString(),
+        }
+      : current)
     autonomousSchedulingBlocked.current = true
     playerSessionId.current += 1
     agentRunId.current += 1
@@ -788,6 +869,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
     playerSessionId,
     playerStarting,
     playerState,
+    motorPlan,
     proposalApprovalBusy,
     queueAutonomousStep,
     rejectAgentProposal,

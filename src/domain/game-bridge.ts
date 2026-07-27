@@ -90,6 +90,8 @@ export interface GameObservation {
     food: number
     saturation: number
     experienceLevel: number
+    supportBlock?: string
+    surfaceState?: 'ground' | 'canopy' | 'airborne'
     inventory: Array<{ name: string; count: number; slot: number }>
     nearbyBlocks: Array<{ name: string; position: { x: number; y: number; z: number }; distance: number }>
     localMap?: {

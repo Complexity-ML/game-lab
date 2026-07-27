@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defensiveResponse, defensiveRetreatTarget, isHostileMob, navigationRecoveryCell, reconnectDelay } from './safety.js'
+import { defensiveResponse, defensiveRetreatTarget, isHostileMob, navigationDescentCell, navigationRecoveryCell, reconnectDelay } from './safety.js'
 
 test('recognizes hostile Minecraft mobs without treating players as hostile', () => {
   assert.equal(isHostileMob('zombie'), true)
@@ -42,4 +42,14 @@ test('selects a walkable local recovery cell toward the original target', () => 
     { offsetX: 0, offsetZ: 1, position: { x: 10, y: 70, z: 11 }, state: 'walkable' },
   ], { x: 20, y: 70, z: 10 })
   assert.deepEqual(cell?.position, { x: 10, y: 70, z: 11 })
+})
+
+test('selects a bounded grounded descent and ignores void or excessive drops', () => {
+  const cell = navigationDescentCell([
+    { offsetX: 1, offsetZ: 0, position: { x: 11, y: 69, z: 10 }, state: 'drop', ground: 'grass_block' },
+    { offsetX: 0, offsetZ: 1, position: { x: 10, y: 69, z: 11 }, state: 'drop' },
+    { offsetX: -1, offsetZ: 0, position: { x: 9, y: 68, z: 10 }, state: 'drop', ground: 'dirt' },
+    { offsetX: 0, offsetZ: -1, position: { x: 10, y: 72, z: 9 }, state: 'walkable', ground: 'dark_oak_leaves' },
+  ], { x: 10, y: 73, z: 10 }, { x: 20, y: 69, z: 10 })
+  assert.deepEqual(cell?.position, { x: 11, y: 69, z: 10 })
 })

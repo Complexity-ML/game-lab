@@ -424,7 +424,7 @@ export default function App() {
         {leftOperationsPanel === 'actions'
           ? <aside aria-label="Agent actions" className="left-operations-panel operations-panel" id="game-lab-actions"><AgentActionsView busy={activityBusy} history={agentActionHistory} onClear={() => setActionHistory([])} onClose={() => setLeftOperationsPanel(undefined)} playerState={player.playerState} /></aside>
           : leftOperationsPanel === 'logs'
-            ? <aside aria-label="Live activity log" className="left-operations-panel operations-panel" id="game-lab-live-logs"><LiveActivityView busy={activityBusy} entries={actionHistory} onClear={() => setActionHistory([])} onClose={() => setLeftOperationsPanel(undefined)} /></aside>
+            ? <aside aria-label="Live activity log" className="left-operations-panel operations-panel" id="game-lab-live-logs"><LiveActivityView busy={activityBusy} entries={actionHistory} motorPlan={player.motorPlan} onClear={() => setActionHistory([])} onClose={() => setLeftOperationsPanel(undefined)} /></aside>
             : <CardLibraryView onAddCard={pipeline.addCard} onClose={() => setLibraryOpen(false)} />}
       </div>
 

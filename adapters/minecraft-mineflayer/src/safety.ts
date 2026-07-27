@@ -9,6 +9,7 @@ export interface NavigationRecoveryCell {
   offsetZ: number
   position: WorldPosition
   state: 'walkable' | 'blocked' | 'hazard' | 'drop'
+  ground?: string
 }
 
 const hostileMobPattern = /(?:^|_)(?:blaze|bogged|breeze|cave_spider|creeper|drowned|elder_guardian|endermite|evoker|ghast|guardian|hoglin|husk|magma_cube|phantom|piglin_brute|pillager|ravager|shulker|silverfish|skeleton|slime|spider|stray|vex|vindicator|warden|witch|wither|wither_skeleton|zoglin|zombie|zombie_villager)(?:$|_)/i
@@ -49,6 +50,30 @@ export function navigationRecoveryCell(cells: NavigationRecoveryCell[], target: 
       return targetDistance(left) - targetDistance(right)
         || left.offsetX ** 2 + left.offsetZ ** 2 - right.offsetX ** 2 - right.offsetZ ** 2
     })[0]
+}
+
+export function navigationDescentCell(
+  cells: NavigationRecoveryCell[],
+  player: WorldPosition,
+  target: WorldPosition,
+  maximumDrop = 4,
+) {
+  const targetDistance = (cell: NavigationRecoveryCell) =>
+    (cell.position.x - target.x) ** 2 + (cell.position.y - target.y) ** 2 + (cell.position.z - target.z) ** 2
+  return cells
+    .filter((cell) => {
+      const drop = player.y - cell.position.y
+      return cell.state === 'drop'
+        && Boolean(cell.ground)
+        && drop >= 2
+        && drop <= maximumDrop
+        && (cell.offsetX !== 0 || cell.offsetZ !== 0)
+    })
+    .sort((left, right) =>
+      targetDistance(left) - targetDistance(right)
+      || player.y - left.position.y - (player.y - right.position.y)
+      || left.offsetX ** 2 + left.offsetZ ** 2 - right.offsetX ** 2 - right.offsetZ ** 2,
+    )[0]
 }
 
 export function defensiveRetreatTarget(player: WorldPosition, threat: WorldPosition, distance = 12): WorldPosition {

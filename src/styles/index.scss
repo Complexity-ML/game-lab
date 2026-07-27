@@ -431,6 +431,28 @@ button { color: inherit; }
 .live-log-state > span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .live-log-state strong { font-size: 9px; }
 .live-log-state small { color: var(--muted); font-size: 7px; }
+.motor-plan { display: flex; flex-direction: column; gap: 8px; padding: 11px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); border-radius: 11px; background: color-mix(in srgb, var(--accent-soft) 42%, var(--panel)); }
+.motor-plan.is-failed, .motor-plan.is-yielded { border-color: var(--error-line); }
+.motor-plan-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.motor-plan-heading > span:first-child { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.motor-plan-heading strong { font-size: 9px; }
+.motor-plan-heading small, .motor-plan-count { color: var(--muted); font-size: 6.5px; }
+.motor-plan-status { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; color: var(--accent-strong); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: 999px; background: var(--panel); font-size: 6px; font-weight: 850; text-transform: uppercase; }
+.motor-plan-progress { height: 4px; overflow: hidden; border-radius: 999px; background: var(--line); }
+.motor-plan-progress span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .2s ease; }
+.motor-plan-steps { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.motor-plan-steps li { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 7px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.motor-plan-steps li > span { display: grid; width: 20px; height: 20px; place-items: center; color: var(--muted); border-radius: 6px; background: var(--soft); }
+.motor-plan-steps li.is-running { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.motor-plan-steps li.is-running > span { color: var(--accent); background: var(--accent-soft); }
+.motor-plan-steps li.is-completed > span { color: #16a34a; background: color-mix(in srgb, #dcfce7 60%, var(--panel)); }
+.motor-plan-steps li.is-blocked > span, .motor-plan-steps li.is-failed > span { color: var(--error-text); background: var(--error-surface); }
+.motor-plan-steps li.is-skipped { opacity: .58; }
+.motor-plan-steps li > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.motor-plan-steps strong { font-size: 7.5px; text-transform: capitalize; }
+.motor-plan-steps p, .motor-plan-steps em { margin: 0; color: var(--muted); font-size: 6.5px; font-style: normal; line-height: 1.4; overflow-wrap: anywhere; }
+.motor-plan-steps small { color: var(--faint); font: 5.8px ui-monospace, monospace; overflow-wrap: anywhere; }
+.motor-plan-steps em { padding-top: 3px; color: var(--text); border-top: 1px solid var(--line); }
 .live-log-list { display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 0; list-style: none; }
 .live-log-list li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
 .live-log-list li > span { display: grid; width: 22px; height: 22px; place-items: center; color: var(--accent); border-radius: 7px; background: var(--soft); }

@@ -5,7 +5,7 @@ import { Vec3 } from 'vec3'
 import type { AdapterConfig } from './config.js'
 import { buildLocalNavigationMap } from './observation.js'
 import { actionTimeoutMs, isImmediateAction, type ActionArguments, type ActionCommand } from './protocol.js'
-import { defensiveResponse, defensiveRetreatTarget, isHostileMob, navigationRecoveryCell, reconnectDelay } from './safety.js'
+import { defensiveResponse, defensiveRetreatTarget, isHostileMob, navigationDescentCell, navigationRecoveryCell, reconnectDelay } from './safety.js'
 
 const faceVectors = {
   up: new Vec3(0, 1, 0),
@@ -163,7 +163,10 @@ export class MinecraftController {
         if (generation !== this.generation) throw new Error('Action cancelled by emergency stop')
         await this.executeWithDeadline(command, generation)
         if (generation === this.generation) {
-          this.updateActivity('observing', `${command.action} completed`)
+          const executionDetail = this.lastAction.startsWith('Controlled canopy descent completed')
+            ? ` · ${this.lastAction}`
+            : ''
+          this.updateActivity('observing', `${command.action} completed${executionDetail}`)
         }
       })
     const tracked = action.catch((error) => {
@@ -388,7 +391,54 @@ export class MinecraftController {
     }
   }
 
-  private async gotoWithRecovery(target: Vec3, generation: number, radius = 1) {
+  private standingOnCanopy() {
+    const support = this.bot.blockAt(this.bot.entity.position.floored().offset(0, -1, 0))
+    return Boolean(support && /_leaves$/.test(support.name))
+  }
+
+  private async controlledCanopyDescent(target: Vec3, generation: number) {
+    if (!this.standingOnCanopy() || this.bot.health < 16) return false
+    const nearestHostile = this.hostileEntities()[0]
+    if (nearestHostile && nearestHostile.position.distanceTo(this.bot.entity.position) <= 12) return false
+    const player = this.bot.entity.position
+    const startY = player.y
+    const cell = navigationDescentCell(buildLocalNavigationMap(this.bot, 5).cells, player, target, 4)
+    if (!cell) return false
+    const drop = Math.round(player.y - cell.position.y)
+    const descentMovements = this.safeMovements(this.bot)
+    descentMovements.maxDropDown = 4
+    this.bot.pathfinder.setMovements(descentMovements)
+    this.updateActivity('acting', `Controlled canopy descent · ${drop}-block grounded drop toward ${cell.position.x},${cell.position.y},${cell.position.z}`)
+    let timeout: NodeJS.Timeout | undefined
+    try {
+      await Promise.race([
+        this.bot.pathfinder.goto(new goals.GoalNear(cell.position.x, cell.position.y, cell.position.z, 1)),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => {
+            this.bot.pathfinder.setGoal(null)
+            reject(new Error('Controlled canopy descent timed out after 8 seconds'))
+          }, 8_000)
+        }),
+      ])
+      if (generation !== this.generation) throw new Error('Movement cancelled during controlled canopy descent')
+      const descended = startY - this.bot.entity.position.y >= 2
+      if (descended) {
+        this.updateActivity('acting', `Controlled canopy descent completed · ${drop}-block grounded drop to ${Math.floor(this.bot.entity.position.x)},${Math.floor(this.bot.entity.position.y)},${Math.floor(this.bot.entity.position.z)}`)
+      }
+      return descended
+    } catch {
+      this.bot.pathfinder.setGoal(null)
+      if (generation !== this.generation) throw new Error('Movement cancelled during controlled canopy descent')
+      return false
+    } finally {
+      if (timeout) clearTimeout(timeout)
+      this.movements = this.safeMovements(this.bot)
+      this.bot.pathfinder.setMovements(this.movements)
+    }
+  }
+
+  private async gotoWithRecovery(target: Vec3, generation: number, radius = 1, preferGround = false) {
+    if (preferGround && await this.controlledCanopyDescent(target, generation)) return
     let lastError: unknown
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       if (generation !== this.generation) throw new Error('Movement cancelled before path recovery')
@@ -472,7 +522,7 @@ export class MinecraftController {
     }
     if (command.action === 'move_to' || command.action === 'navigate_to') {
       const target = coordinates(args)
-      await this.gotoWithRecovery(target, generation)
+      await this.gotoWithRecovery(target, generation, 1, true)
       return
     }
     if (command.action === 'mine_block') {
