@@ -8,7 +8,7 @@ import { applyAtomicRunState, buildAtomicRunTrace, executePipelineAtomically, ty
 import { maximumAtomicRepairAttempts, planAtomicRepair, type AtomicRepairState } from '../domain/atomic-repair'
 import type { AutonomyPolicy } from '../domain/autonomy-policy'
 import { policyForcesProposalReview } from '../domain/autonomy-policy'
-import { ensureAutonomousSystemCards } from '../domain/autonomous-system'
+import { ensureAutonomousSystemCards, updateCurrentGameAction } from '../domain/autonomous-system'
 import { classifyConnectivityFailure } from '../domain/connectivity'
 import { recordDiagnostic } from '../domain/diagnostics'
 import { autonomousMissionActionBudget, autonomousProposalFingerprint, gameActionRequiresHumanReview } from '../domain/game-autonomy'
@@ -117,6 +117,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
   const executeGameActions = async (gameActions: NonNullable<AgentProposal['gameActions']>) => {
     if (!window.gameLab) throw new Error('Gameplay actions require the Electron Game Bridge')
     for (const gameAction of gameActions) {
+      setNodes((current) => updateCurrentGameAction(current, gameAction))
       const receipt = await window.gameLab.executeGameAction(gameAction).catch((error) => ({
         commandId: gameAction.commandId,
         checkpointId: gameAction.checkpointId,
@@ -125,7 +126,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         summary: errorMessage(error, 'Game Bridge action failed'),
         receivedAt: new Date().toISOString(),
       }))
-      setNodes((current) => current.map((node) => node.id === gameAction.agentNodeId
+      setNodes((current) => updateCurrentGameAction(current, gameAction, receipt).map((node) => node.id === gameAction.agentNodeId
         ? {
             ...node,
             data: {
@@ -143,6 +144,9 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       if (!['accepted', 'completed'].includes(receipt.status)) {
         await window.gameLab.emergencyStopGameBridge().catch(() => undefined)
         return { completed: false, receipt }
+      }
+      if (receipt.status === 'completed') {
+        notifyToast(receipt.summary, 'success', `${receipt.action.replaceAll('_', ' ')} completed`)
       }
     }
     nextObservationSource.current = 'post_action'
