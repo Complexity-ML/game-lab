@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { defaultAutonomyPolicy } from './autonomy-policy'
-import { autonomousProposalFingerprint, gameActionRequiresHumanReview, isRecoverableGameActionFailure } from './game-autonomy'
+import { autonomousProposalFingerprint, gameActionRequiresHumanReview, isRecoverableGameActionFailure, isStaleGameCheckpointFailure } from './game-autonomy'
 import type { GameObservation } from './game-bridge'
 
 const observation: GameObservation = {
@@ -67,5 +67,10 @@ describe('autonomous gameplay policy', () => {
     expect(isRecoverableGameActionFailure('Pathfinder attempt timed out')).toBe(true)
     expect(isRecoverableGameActionFailure('Action is not in the Minecraft allowlist')).toBe(true)
     expect(isRecoverableGameActionFailure('Minecraft credentials rejected')).toBe(false)
+  })
+
+  it('recognizes a stale checkpoint race separately from path failures', () => {
+    expect(isStaleGameCheckpointFailure('Game Bridge 409: Stale or unknown checkpoint. Capture a fresh observation before acting.')).toBe(true)
+    expect(isStaleGameCheckpointFailure('Pathfinder attempt timed out')).toBe(false)
   })
 })

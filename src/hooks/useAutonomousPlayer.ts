@@ -11,7 +11,7 @@ import { policyForcesProposalReview } from '../domain/autonomy-policy'
 import { ensureAutonomousSystemCards } from '../domain/autonomous-system'
 import { classifyConnectivityFailure } from '../domain/connectivity'
 import { recordDiagnostic } from '../domain/diagnostics'
-import { autonomousMissionActionBudget, autonomousProposalFingerprint, gameActionRequiresHumanReview, isRecoverableGameActionFailure } from '../domain/game-autonomy'
+import { autonomousMissionActionBudget, autonomousProposalFingerprint, gameActionRequiresHumanReview, isRecoverableGameActionFailure, isStaleGameCheckpointFailure } from '../domain/game-autonomy'
 import type { GameObservation, GameObservationSource } from '../domain/game-bridge'
 import { createGameMotorPlan, gameMotorCheckpoint, gameMotorMaximumActions, type GameMotorExecutionResult, type GameMotorPlanStatus, type GameMotorPlanView, type GameMotorStepStatus } from '../domain/game-motor'
 import type { IncidentEventInput, IncidentSummary } from '../domain/incidents'
@@ -223,7 +223,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
           }
         }
       }
-      const gameAction = {
+      let gameAction = {
         ...plannedAction,
         commandId: `${plannedAction.commandId}-motor-${index + 1}`,
         checkpointId: latestObservation?.checkpointId ?? plannedAction.checkpointId,
@@ -232,7 +232,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       updateMotorStep(planId, index, 'running', { checkpointId: gameAction.checkpointId })
       setActivity(`GAME LAB Motor · action ${index + 1}/${plan.length} · ${gameAction.action.replaceAll('_', ' ')}`)
       recordActivity(`Motor action ${index + 1}/${plan.length} queued · ${gameAction.action.replaceAll('_', ' ')} · checkpoint ${gameAction.checkpointId}`)
-      const receipt = await window.gameLab.executeGameAction(gameAction).catch((error) => ({
+      let receipt = await window.gameLab.executeGameAction(gameAction).catch((error) => ({
         commandId: gameAction.commandId,
         checkpointId: gameAction.checkpointId,
         action: gameAction.action,
@@ -240,6 +240,45 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         summary: errorMessage(error, 'Game Bridge action failed'),
         receivedAt: new Date().toISOString(),
       }))
+      if (receipt.status === 'failed' && isStaleGameCheckpointFailure(receipt.summary)) {
+        recordActivity(`Checkpoint race detected · ${gameAction.checkpointId} became stale · refreshing once before ${gameAction.action.replaceAll('_', ' ')}`)
+        try {
+          const refreshedObservation = await window.gameLab.getGameObservation('post_action')
+          const checkpoint = gameMotorCheckpoint(refreshedObservation, gameAction.action)
+          latestObservation = refreshedObservation
+          if (checkpoint.continue) {
+            gameAction = {
+              ...gameAction,
+              commandId: `${gameAction.commandId}-checkpoint-retry`,
+              checkpointId: refreshedObservation.checkpointId,
+              requestedAt: new Date().toISOString(),
+            }
+            updateMotorStep(planId, index, 'running', {
+              checkpointId: gameAction.checkpointId,
+              summary: 'Checkpoint refreshed after a concurrent observation · retrying once',
+            })
+            receipt = await window.gameLab.executeGameAction(gameAction).catch((error) => ({
+              commandId: gameAction.commandId,
+              checkpointId: gameAction.checkpointId,
+              action: gameAction.action,
+              status: 'failed' as const,
+              summary: errorMessage(error, 'Game Bridge checkpoint retry failed'),
+              receivedAt: new Date().toISOString(),
+            }))
+          } else {
+            receipt = {
+              ...receipt,
+              checkpointId: refreshedObservation.checkpointId,
+              summary: `Fresh checkpoint rejected the action safely: ${checkpoint.reason}`,
+            }
+          }
+        } catch (error) {
+          receipt = {
+            ...receipt,
+            summary: `Checkpoint refresh failed: ${errorMessage(error, receipt.summary)}`,
+          }
+        }
+      }
       recordActivity(`Motor action ${index + 1}/${plan.length} ${receipt.status} · ${receipt.action.replaceAll('_', ' ')} · ${receipt.summary}`)
       setNodes((current) => current.map((node) => node.id === gameAction.agentNodeId
         ? {

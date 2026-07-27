@@ -20,6 +20,10 @@ export function isRecoverableGameActionFailure(summary: string) {
   return /timed out|timeout|movement blocked|pathfinder|digging|target may be blocked|unreachable|no path|not in the minecraft allowlist|not allowlisted/i.test(summary)
 }
 
+export function isStaleGameCheckpointFailure(summary: string) {
+  return /(?:409|stale or unknown checkpoint|capture a fresh observation before acting)/i.test(summary)
+}
+
 export function gameActionRequiresHumanReview(
   policy: AutonomyPolicy,
   action: GameActionCommand['action'],

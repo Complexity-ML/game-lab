@@ -55,12 +55,14 @@ export function startBridgeServer(config: AdapterConfig, controller: MinecraftCo
         }
         observationSequence += 1
         const observationId = `minecraft-observation-${observationSequence}`
-        currentCheckpointId = `minecraft-checkpoint-${observationSequence}`
         lastObservationAt = new Date().toISOString()
         const requestedSource = url.searchParams.get('source') ?? 'manual'
         const source = observationSources.has(requestedSource)
           ? requestedSource as 'manual' | 'startup' | 'autonomous_loop' | 'post_action' | 'card_rework'
           : 'manual'
+        // Manual UI inspection is read-only and must not invalidate a
+        // checkpoint that the autonomous Motor is about to execute.
+        if (!currentCheckpointId || source !== 'manual') currentCheckpointId = `minecraft-checkpoint-${observationSequence}`
         const status = controller.status()
         const observation = buildObservation(controller.bot, {
           checkpointId: currentCheckpointId,
