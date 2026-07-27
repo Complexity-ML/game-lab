@@ -41,7 +41,9 @@ describe('Electron renderer trust boundary', () => {
   it('exposes Game Bridge actions and emergency stop through separate fixed channels', () => {
     expect(main).toContain("const gameBridgeActionChannel = 'game-lab:game-bridge-action'")
     expect(main).toContain("const gameBridgeStopChannel = 'game-lab:game-bridge-stop'")
+    expect(main).toContain("const gameBridgeResumeChannel = 'game-lab:game-bridge-resume'")
     expect(preload).toContain('executeGameAction: (payload: unknown) => ipcRenderer.invoke(gameBridgeActionChannel, payload)')
     expect(preload).toContain('emergencyStopGameBridge: () => ipcRenderer.invoke(gameBridgeStopChannel)')
+    expect(preload).toContain('resumeGameBridge: () => ipcRenderer.invoke(gameBridgeResumeChannel)')
   })
 })

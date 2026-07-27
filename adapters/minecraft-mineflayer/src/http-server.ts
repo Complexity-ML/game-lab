@@ -110,6 +110,10 @@ export function startBridgeServer(config: AdapterConfig, controller: MinecraftCo
         json(response, 200, { stopped: true, commandId, summary: controller.emergencyStop() })
         return
       }
+      if (request.method === 'POST' && url.pathname === '/v1/resume') {
+        json(response, 200, { resumed: true, summary: controller.resume() })
+        return
+      }
       json(response, 404, { error: 'Not found' })
     } catch (error) {
       json(response, 400, { error: error instanceof Error ? error.message : String(error) })

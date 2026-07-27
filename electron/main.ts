@@ -68,6 +68,7 @@ const gameBridgeStatusChannel = 'game-lab:game-bridge-status'
 const gameBridgeObservationChannel = 'game-lab:game-bridge-observation'
 const gameBridgeActionChannel = 'game-lab:game-bridge-action'
 const gameBridgeStopChannel = 'game-lab:game-bridge-stop'
+const gameBridgeResumeChannel = 'game-lab:game-bridge-resume'
 const gameBridgeCheckpointsChannel = 'game-lab:game-bridge-checkpoints'
 let mainWindow: BrowserWindow | undefined
 let isQuitting = false
@@ -256,6 +257,7 @@ app.whenReady().then(() => {
   ipcMain.handle(gameBridgeObservationChannel, (_event, source?: unknown) => gameBridge?.observation(source))
   ipcMain.handle(gameBridgeActionChannel, (_event, payload: unknown) => gameBridge?.execute(payload))
   ipcMain.handle(gameBridgeStopChannel, () => gameBridge?.emergencyStop())
+  ipcMain.handle(gameBridgeResumeChannel, () => gameBridge?.resume())
   ipcMain.handle(gameBridgeCheckpointsChannel, (_event, payload: { limit?: unknown }) => listGameCheckpoints(app.getPath('userData'), payload?.limit))
   ipcMain.handle(workspaceLoadChannel, () => loadWorkspaceManagerState(app.getPath('userData'), workspaceSessionWasUnclean))
   ipcMain.handle(workspaceCreateChannel, (_event, payload: { name?: unknown; workspace?: unknown }) => createWorkspace(app.getPath('userData'), payload?.name, payload?.workspace))

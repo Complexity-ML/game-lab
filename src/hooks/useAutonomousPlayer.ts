@@ -570,10 +570,10 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
               autonomousNoProgressCount.current += 1
               if (autonomousNoProgressCount.current <= 3) {
                 const attempt = autonomousNoProgressCount.current
-                recordActivity(`Action blocked · ${execution.receipt?.action ?? 'unknown'} · replanning from a fresh 5-block local map (${attempt}/3)`)
+                recordActivity(`Action blocked · ${execution.receipt?.action ?? 'unknown'} · replanning from a fresh 8-block local map (${attempt}/3)`)
                 setActivity(`Minecraft route or target blocked · safe replan ${attempt}/3 from a fresh checkpoint`)
                 queueAutonomousStep(
-                  `The prior GAME LAB Motor action "${execution.receipt?.action ?? 'Minecraft'}" failed safely after ${execution.completedActions}/${gameActions.length} completed steps: ${failureSummary}. Capture a fresh observation, inspect the 5-block localMap, and create a different bounded recovery plan. Prefer alternate reachable coordinates or targets. Do not assume the failed action completed and do not repeat completed or stale targets.`,
+                  `The prior GAME LAB Motor action "${execution.receipt?.action ?? 'Minecraft'}" failed safely after ${execution.completedActions}/${gameActions.length} completed steps: ${failureSummary}. Capture a fresh observation, inspect the 8-block localMap, and create a different bounded recovery plan. Prefer alternate reachable coordinates or targets. Do not assume the failed action completed and do not repeat completed or stale targets.`,
                   expectedPlayerSessionId,
                   500,
                 )
@@ -678,6 +678,17 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       setActivity(`${bridgeStatus.message} · connect the local Game Bridge before starting`)
       return
     }
+    const resumed = await window.gameLab.resumeGameBridge().catch((error) => ({
+      resumed: false,
+      summary: errorMessage(error, 'Game Bridge resume unavailable'),
+    }))
+    if (!resumed.resumed) {
+      setSettingsSection('connections')
+      setSettingsOpen(true)
+      setActivity(`${resumed.summary} · autonomous player remains stopped`)
+      return
+    }
+    recordActivity(`Game Bridge resumed · ${resumed.summary}`)
     let observation
     try {
       observation = await window.gameLab.getGameObservation('startup')

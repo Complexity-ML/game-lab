@@ -61,6 +61,7 @@ declare global {
       getGameObservation(source?: import('./domain/game-bridge').GameObservationSource): Promise<GameObservation>
       executeGameAction(command: GameActionCommand): Promise<GameActionReceipt>
       emergencyStopGameBridge(): Promise<{ stopped: boolean; commandId: string; summary: string }>
+      resumeGameBridge(): Promise<{ resumed: boolean; summary: string }>
       listGameCheckpoints(limit?: number): Promise<GameCheckpointSummary[]>
       onAppUpdateStatusChanged(callback: (status: AppUpdateStatus) => void): () => void
       onHumanReviewOpened(callback: (payload: { versionId?: string }) => void): () => void

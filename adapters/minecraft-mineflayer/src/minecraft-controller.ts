@@ -235,6 +235,16 @@ export class MinecraftController {
     return this.lastAction
   }
 
+  resume() {
+    if (!this.connected) throw new Error('Minecraft bot is not connected')
+    this.safetyReflexEnabled = true
+    this.clearDefensiveCombat()
+    this.bot.pathfinder?.setGoal(null)
+    this.bot.clearControlStates()
+    this.updateActivity('observing', 'Autonomous mission armed · fresh checkpoint required')
+    return this.lastAction
+  }
+
   shutdown() {
     this.reconnectEnabled = false
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
@@ -402,7 +412,7 @@ export class MinecraftController {
     if (nearestHostile && nearestHostile.position.distanceTo(this.bot.entity.position) <= 12) return false
     const player = this.bot.entity.position
     const startY = player.y
-    const cell = navigationDescentCell(buildLocalNavigationMap(this.bot, 5).cells, player, target, 4)
+    const cell = navigationDescentCell(buildLocalNavigationMap(this.bot, 8).cells, player, target, 4)
     if (!cell) return false
     const drop = Math.round(player.y - cell.position.y)
     const descentMovements = this.safeMovements(this.bot)

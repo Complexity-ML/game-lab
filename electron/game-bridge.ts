@@ -380,4 +380,17 @@ export class GameBridgeClient {
       return { stopped: false, commandId, summary: error instanceof Error ? error.message : 'Game adapter stop failed' }
     }
   }
+
+  async resume() {
+    const { endpoint } = this.configuration()
+    try {
+      const response = record(await jsonRequest(endpoint, '/v1/resume', { method: 'POST', body: '{}' }), 'Game Bridge resume receipt')
+      return {
+        resumed: response.resumed === true,
+        summary: boundedText(response.summary, 'Game Bridge resume summary', 500, 'Game adapter resumed'),
+      }
+    } catch (error) {
+      return { resumed: false, summary: error instanceof Error ? error.message : 'Game adapter resume failed' }
+    }
+  }
 }

@@ -65,6 +65,7 @@ describe('local structured Game Bridge', () => {
       },
       { status: 'completed', summary: 'Movement completed' },
       { stopped: true, summary: 'Stopped immediately' },
+      { resumed: true, summary: 'Autonomous mission armed · fresh checkpoint required' },
     ]
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(responses.shift()), { status: 200 })))
     const client = new GameBridgeClient(
@@ -82,6 +83,7 @@ describe('local structured Game Bridge', () => {
     })
     expect(receipt).toMatchObject({ checkpointId: 'checkpoint-1', action: 'mine_block', status: 'completed' })
     expect(await client.emergencyStop()).toMatchObject({ stopped: true, summary: 'Stopped immediately' })
+    expect(await client.resume()).toMatchObject({ resumed: true, summary: expect.stringContaining('mission armed') })
     expect(checkpoints).toMatchObject([
       { kind: 'observation', checkpointId: 'checkpoint-1', status: 'captured', summary: expect.stringContaining('state=threat_detected; source=post_action') },
       { kind: 'action', checkpointId: 'checkpoint-1', action: 'mine_block', status: 'completed' },

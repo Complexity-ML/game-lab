@@ -54,6 +54,7 @@ const gameBridgeStatusChannel = 'game-lab:game-bridge-status'
 const gameBridgeObservationChannel = 'game-lab:game-bridge-observation'
 const gameBridgeActionChannel = 'game-lab:game-bridge-action'
 const gameBridgeStopChannel = 'game-lab:game-bridge-stop'
+const gameBridgeResumeChannel = 'game-lab:game-bridge-resume'
 const gameBridgeCheckpointsChannel = 'game-lab:game-bridge-checkpoints'
 
 contextBridge.exposeInMainWorld('gameLab', {
@@ -109,6 +110,7 @@ contextBridge.exposeInMainWorld('gameLab', {
   getGameObservation: (source?: string) => ipcRenderer.invoke(gameBridgeObservationChannel, source),
   executeGameAction: (payload: unknown) => ipcRenderer.invoke(gameBridgeActionChannel, payload),
   emergencyStopGameBridge: () => ipcRenderer.invoke(gameBridgeStopChannel),
+  resumeGameBridge: () => ipcRenderer.invoke(gameBridgeResumeChannel),
   listGameCheckpoints: (limit = 20) => ipcRenderer.invoke(gameBridgeCheckpointsChannel, { limit }),
   onAppUpdateStatusChanged: (callback: (status: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: unknown) => callback(status)

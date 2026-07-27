@@ -52,7 +52,7 @@ export interface LocalNavigationCell {
   ground?: string
 }
 
-export function buildLocalNavigationMap(bot: Bot, radius = 5) {
+export function buildLocalNavigationMap(bot: Bot, radius = 8) {
   const origin = bot.entity.position.floored()
   const cells: LocalNavigationCell[] = []
   for (let offsetZ = -radius; offsetZ <= radius; offsetZ += 1) {

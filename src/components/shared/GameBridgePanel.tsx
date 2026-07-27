@@ -107,7 +107,7 @@ export function GameBridgePanel() {
     </div>}
     {observation?.gameState?.kind === 'minecraft' && observation.gameState.localMap && <div className="minecraft-local-map">
       <div className="minecraft-local-map-heading">
-        <span><strong>5-block navigation map</strong><small>Safe route preview around the agent</small></span>
+        <span><strong>{observation.gameState.localMap.radius}-block navigation map</strong><small>Safe route preview around the agent</small></span>
         <span className="minecraft-local-map-legend"><i className="walkable" /> safe <i className="blocked" /> blocked <i className="hazard" /> hazard <i className="drop" /> drop</span>
       </div>
       <div
