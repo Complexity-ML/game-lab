@@ -144,7 +144,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
           }
         : node))
       if (!['accepted', 'completed'].includes(receipt.status)) {
-        await window.gameLab.emergencyStopGameBridge().catch(() => undefined)
+        recordActivity('Defensive safety remains armed · only the operator Stop control can disable combat and retreat reflexes')
         return { completed: false, receipt }
       }
       if (receipt.status === 'completed') {
