@@ -42,6 +42,7 @@ const navigationHazards = new Set([
   'bubble_column', 'cactus', 'campfire', 'fire', 'lava', 'magma_block', 'powder_snow',
   'soul_campfire', 'soul_fire', 'sweet_berry_bush', 'water', 'wither_rose',
 ])
+const navigationVerticalScanDepth = 10
 
 export interface LocalNavigationCell {
   offsetX: number
@@ -59,7 +60,10 @@ export function buildLocalNavigationMap(bot: Bot, radius = 5) {
       const x = origin.x + offsetX
       const z = origin.z + offsetZ
       let ground
-      for (let y = origin.y + 1; y >= origin.y - 4; y -= 1) {
+      // A dark-oak canopy can be four blocks thick before the first terrain
+      // block. Scan deeper than the permitted fall so a drop is classified
+      // from an actual landing surface instead of an unknown void.
+      for (let y = origin.y + 1; y >= origin.y - navigationVerticalScanDepth; y -= 1) {
         const candidate = bot.blockAt(new Vec3(x, y, z))
         if (candidate?.boundingBox === 'block') {
           ground = candidate
@@ -67,7 +71,7 @@ export function buildLocalNavigationMap(bot: Bot, radius = 5) {
         }
       }
       if (!ground) {
-        cells.push({ offsetX, offsetZ, position: { x, y: origin.y - 4, z }, state: 'drop' })
+        cells.push({ offsetX, offsetZ, position: { x, y: origin.y - navigationVerticalScanDepth, z }, state: 'drop' })
         continue
       }
       const feet = bot.blockAt(ground.position.offset(0, 1, 0))

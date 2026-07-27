@@ -596,7 +596,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
           : `Checkpoint committed · ${nextProposal.title} · continuing the autonomous mission`)
         queueAutonomousStep(
           gameActions.length
-            ? `The GAME LAB Motor completed and locally validated ${gameActions.length} actions. Read the changed Minecraft state once, assess progress, and prepare the next bounded 5-to-${gameMotorMaximumActions}-step motor plan toward "${observation.mission.objective}". Use fewer steps if fresh evidence supports fewer.`
+            ? `The GAME LAB Motor completed and locally validated ${gameActions.length} actions. Read the changed Minecraft state once, assess progress, and, when health is stable and threat is none or low, aim for the next bounded 12-to-${gameMotorMaximumActions}-step motor plan toward "${observation.mission.objective}". Use a shorter dependency-safe plan when danger or unknown post-action state prevents prediction.`
             : `Continue the autonomous private-game mission toward "${observation.mission.objective}" from a fresh checkpoint. Prefer one bounded GAME LAB Motor plan instead of a single micro-action.`,
           expectedPlayerSessionId,
           gameActions.length ? 300 : 650,
