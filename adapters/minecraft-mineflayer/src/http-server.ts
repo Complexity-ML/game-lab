@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { randomUUID } from 'node:crypto'
 import type { AdapterConfig } from './config.js'
 import { buildObservation } from './observation.js'
-import { parseActionCommand, protocol } from './protocol.js'
+import { isImmediateAction, parseActionCommand, protocol } from './protocol.js'
 import type { MinecraftController } from './minecraft-controller.js'
 
 const MAX_BODY_BYTES = 64_000
@@ -79,7 +79,7 @@ export function startBridgeServer(config: AdapterConfig, controller: MinecraftCo
       }
       if (request.method === 'POST' && url.pathname === '/v1/actions') {
         const command = parseActionCommand(await requestBody(request))
-        if (!currentCheckpointId || command.checkpointId !== currentCheckpointId) {
+        if (!isImmediateAction(command.action) && (!currentCheckpointId || command.checkpointId !== currentCheckpointId)) {
           json(response, 409, { status: 'rejected', summary: 'Stale or unknown checkpoint. Capture a fresh observation before acting.' })
           return
         }

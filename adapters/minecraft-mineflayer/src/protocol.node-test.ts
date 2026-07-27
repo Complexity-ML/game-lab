@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { loadConfig } from './config.js'
-import { parseActionCommand } from './protocol.js'
+import { isImmediateAction, parseActionCommand } from './protocol.js'
 
 test('private-server acknowledgment is mandatory', () => {
   assert.throws(() => loadConfig({}), /Refusing to start/)
@@ -28,4 +28,10 @@ test('unsafe and malformed commands are rejected', () => {
   assert.throws(() => parseActionCommand({ checkpointId: 'checkpoint-1', action: 'run_console', arguments: {} }), /allowlist/)
   assert.throws(() => parseActionCommand({ checkpointId: 'checkpoint-1', action: 'navigate_to', arguments: { targetX: 40_000_000 } }), /targetX/)
   assert.throws(() => parseActionCommand({ checkpointId: 'checkpoint-1', action: 'place_block', arguments: { face: 'diagonal' } }), /cardinal/)
+})
+
+test('stop is the only action that bypasses the action queue', () => {
+  assert.equal(isImmediateAction('stop'), true)
+  assert.equal(isImmediateAction('move_to'), false)
+  assert.equal(isImmediateAction('jump'), false)
 })

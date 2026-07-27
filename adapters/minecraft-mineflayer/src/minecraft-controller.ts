@@ -3,7 +3,7 @@ import minecraftData from 'minecraft-data'
 import pathfinderModule from 'mineflayer-pathfinder'
 import { Vec3 } from 'vec3'
 import type { AdapterConfig } from './config.js'
-import type { ActionArguments, ActionCommand } from './protocol.js'
+import { isImmediateAction, type ActionArguments, type ActionCommand } from './protocol.js'
 import { defensiveResponse, defensiveRetreatTarget, isHostileMob, reconnectDelay } from './safety.js'
 
 const faceVectors = {
@@ -150,9 +150,13 @@ export class MinecraftController {
   }
 
   enqueue(command: ActionCommand) {
+    if (isImmediateAction(command.action)) {
+      this.emergencyStop()
+      return Promise.resolve()
+    }
     const generation = this.generation
     const defensiveResponseGeneration = this.defensiveResponseGeneration
-    if (command.action !== 'stop') this.safetyReflexEnabled = true
+    this.safetyReflexEnabled = true
     this.updateActivity('acting', `${command.action} queued`)
     const action = this.queue.then(async () => {
         if (generation !== this.generation) throw new Error('Action cancelled by emergency stop')

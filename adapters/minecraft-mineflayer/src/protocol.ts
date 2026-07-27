@@ -9,6 +9,10 @@ export const actionTypes = [
 
 export type MinecraftAction = typeof actionTypes[number]
 
+export function isImmediateAction(action: MinecraftAction) {
+  return action === 'stop'
+}
+
 export interface ActionArguments {
   targetX?: number
   targetY?: number
