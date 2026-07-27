@@ -29,7 +29,7 @@ describe('local structured Game Bridge', () => {
         player: { position: { x: 1, y: 2, z: 3 }, heading: 90, speed: 0, health: 200, armor: 50, inVehicle: false },
         mission: { id: 'mission-1', objective: 'Reach the marker', stage: 'spawned', completed: false },
         environment: { area: 'Private shard', threatLevel: 'none' },
-        nearby: [{ id: 'marker-1', kind: 'checkpoint', distance: 12 }],
+        nearby: [{ id: 'marker-1', kind: 'checkpoint', distance: 12, position: { x: 12, y: 64, z: 20 } }],
         gameState: {
           kind: 'minecraft',
           version: '1.21.11',
@@ -51,7 +51,7 @@ describe('local structured Game Bridge', () => {
     )
 
     const observation = await client.observation()
-    expect(observation).toMatchObject({ checkpointId: 'checkpoint-1', mission: { objective: 'Reach the marker' }, nearby: [{ id: 'marker-1' }], gameState: { kind: 'minecraft', food: 18, inventory: [{ name: 'oak_log', count: 4 }] } })
+    expect(observation).toMatchObject({ checkpointId: 'checkpoint-1', mission: { objective: 'Reach the marker' }, nearby: [{ id: 'marker-1', position: { x: 12, y: 64, z: 20 } }], gameState: { kind: 'minecraft', food: 18, inventory: [{ name: 'oak_log', count: 4 }] } })
 
     const receipt = await client.execute({
       action: 'mine_block',

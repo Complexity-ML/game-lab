@@ -23,12 +23,16 @@ describe('autonomous gameplay policy', () => {
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'interact', observation)).toBe(true)
   })
 
-  it('falls back to review when the player is unsafe', () => {
+  it('allows immediate evasion but reviews non-evasive actions when the player is unsafe', () => {
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'navigate_to', {
       ...observation,
       player: { ...observation.player, health: 6 },
-    })).toBe(true)
+    })).toBe(false)
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'navigate_to', {
+      ...observation,
+      environment: { ...observation.environment, threatLevel: 'high' },
+    })).toBe(false)
+    expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'mine_block', {
       ...observation,
       environment: { ...observation.environment, threatLevel: 'high' },
     })).toBe(true)

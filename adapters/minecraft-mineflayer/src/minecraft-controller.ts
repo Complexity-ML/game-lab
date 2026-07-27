@@ -4,6 +4,7 @@ import pathfinderModule from 'mineflayer-pathfinder'
 import { Vec3 } from 'vec3'
 import type { AdapterConfig } from './config.js'
 import type { ActionArguments, ActionCommand } from './protocol.js'
+import { defensiveRetreatTarget, isHostileMob } from './safety.js'
 
 const faceVectors = {
   up: new Vec3(0, 1, 0),
@@ -33,6 +34,10 @@ export class MinecraftController {
   private connected = false
   private stage = 'connecting'
   private lastAction = 'Waiting for Minecraft connection'
+  private lastHealth = 20
+  private defensiveRetreatGeneration = 0
+  private defensiveRetreatCooldownUntil = 0
+  private safetyReflexEnabled = true
 
   constructor(readonly config: AdapterConfig) {
     this.bot = mineflayer.createBot({
@@ -48,8 +53,21 @@ export class MinecraftController {
       this.movements.canDig = true
       this.bot.pathfinder.setMovements(this.movements)
       this.connected = true
+      this.lastHealth = this.bot.health
+      this.safetyReflexEnabled = true
       this.stage = 'observing'
       this.lastAction = 'Minecraft bot spawned'
+    })
+    this.bot.on('health', () => {
+      const lostHealth = this.bot.health < this.lastHealth
+      this.lastHealth = this.bot.health
+      if (lostHealth) this.beginDefensiveRetreat()
+    })
+    this.bot.on('goal_reached', () => {
+      if (this.stage === 'evading') {
+        this.stage = 'observing'
+        this.lastAction = 'Defensive retreat completed'
+      }
     })
     this.bot.on('end', (reason) => {
       this.connected = false
@@ -73,6 +91,8 @@ export class MinecraftController {
 
   enqueue(command: ActionCommand) {
     const generation = this.generation
+    const defensiveRetreatGeneration = this.defensiveRetreatGeneration
+    if (command.action !== 'stop') this.safetyReflexEnabled = true
     this.stage = 'acting'
     this.lastAction = `${command.action} queued`
     const action = this.queue.then(async () => {
@@ -84,6 +104,11 @@ export class MinecraftController {
         }
       })
     const tracked = action.catch((error) => {
+      if (this.defensiveRetreatGeneration !== defensiveRetreatGeneration) {
+        this.stage = 'evading'
+        this.lastAction = `${command.action} interrupted by defensive retreat`
+        return
+      }
       if (generation === this.generation) {
         this.stage = 'blocked'
         this.lastAction = `${command.action} failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500)
@@ -96,6 +121,7 @@ export class MinecraftController {
 
   emergencyStop() {
     this.generation += 1
+    this.safetyReflexEnabled = false
     this.bot.pathfinder?.setGoal(null)
     this.bot.clearControlStates()
     this.bot.stopDigging()
@@ -103,6 +129,25 @@ export class MinecraftController {
     this.stage = 'stopped'
     this.lastAction = 'Emergency stop applied'
     return this.lastAction
+  }
+
+  private beginDefensiveRetreat() {
+    if (!this.connected || !this.safetyReflexEnabled || Date.now() < this.defensiveRetreatCooldownUntil) return
+    const hostile = Object.values(this.bot.entities)
+      .filter((entity) => entity !== this.bot.entity
+        && entity.type !== 'player'
+        && entity.position
+        && isHostileMob(entity.name ?? entity.displayName ?? entity.type))
+      .sort((left, right) => left.position.distanceTo(this.bot.entity.position) - right.position.distanceTo(this.bot.entity.position))[0]
+    if (!hostile) return
+    const target = defensiveRetreatTarget(this.bot.entity.position, hostile.position)
+    this.defensiveRetreatGeneration += 1
+    this.defensiveRetreatCooldownUntil = Date.now() + 2_000
+    this.bot.stopDigging()
+    this.bot.deactivateItem()
+    this.bot.pathfinder.setGoal(new goals.GoalNear(target.x, target.y, target.z, 2))
+    this.stage = 'evading'
+    this.lastAction = `Defensive retreat from ${hostile.name ?? hostile.displayName ?? 'hostile mob'} toward ${target.x},${target.y},${target.z}`
   }
 
   private entity(entityId: string | undefined) {

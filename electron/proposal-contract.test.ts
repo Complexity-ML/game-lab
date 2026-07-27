@@ -99,6 +99,22 @@ describe('strict game proposal contract', () => {
     expect(() => validateProposal(proposal([{ ...moveAction, game_action: 'attack_entity', game_action_args: { ...moveAction.game_action_args, entity_id: 'entity-2' } }]), autonomousPayload)).toThrow('require Human Review')
     expect(() => validateProposal(proposal([moveAction, { ...moveAction, game_action: 'wait', game_action_args: { ...moveAction.game_action_args, target_x: null, target_y: null, target_z: null, duration_ms: 1000 } }]), autonomousPayload)).toThrow('exactly one')
     expect(() => validateProposal(proposal([{ ...moveAction, game_action_args: { ...moveAction.game_action_args, target_x: 100 } }]), autonomousPayload)).toThrow('within 64 blocks')
+    const threatenedPayload = {
+      ...autonomousPayload,
+      gameRuntime: {
+        ...autonomousPayload.gameRuntime,
+        observation: {
+          ...autonomousPayload.gameRuntime.observation,
+          environment: { threatLevel: 'high' },
+        },
+      },
+    }
+    expect(validateProposal(proposal([moveAction]), threatenedPayload).actions[0]).toMatchObject({ game_action: 'move_to' })
+    expect(() => validateProposal(proposal([{
+      ...moveAction,
+      game_action: 'mine_block',
+      game_action_args: { ...moveAction.game_action_args, block_name: 'oak_log' },
+    }]), threatenedPayload)).toThrow('allows only autonomous movement or stop')
   })
 
   it('validates game-only World Explorer and Telemetry Query policies', () => {

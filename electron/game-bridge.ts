@@ -110,11 +110,21 @@ function normalizeObservation(value: unknown) {
   const nearby = Array.isArray(input.nearby) ? input.nearby.slice(0, 32).map((entry, index) => {
     const item = record(entry, `Nearby entity ${index + 1}`)
     const kind = ['player', 'npc', 'vehicle', 'object', 'checkpoint'].includes(String(item.kind)) ? item.kind as 'player' | 'npc' | 'vehicle' | 'object' | 'checkpoint' : 'object'
+    const entityPosition = item.position && typeof item.position === 'object' && !Array.isArray(item.position)
+      ? item.position as JsonRecord
+      : undefined
     return {
       id: optionalIdentifier(item.id, `Nearby entity ${index + 1} id`) ?? `entity-${index + 1}`,
       kind,
       distance: boundedNumber(item.distance, `Nearby entity ${index + 1} distance`, 0, 10_000),
       state: typeof item.state === 'string' ? item.state.trim().slice(0, 120) : undefined,
+      ...(entityPosition ? {
+        position: {
+          x: boundedNumber(entityPosition.x, `Nearby entity ${index + 1} x`, -30_000_000, 30_000_000),
+          y: boundedNumber(entityPosition.y, `Nearby entity ${index + 1} y`, -2_048, 2_048),
+          z: boundedNumber(entityPosition.z, `Nearby entity ${index + 1} z`, -30_000_000, 30_000_000),
+        },
+      } : {}),
     }
   }) : []
   const rawGameState = input.gameState && typeof input.gameState === 'object' && !Array.isArray(input.gameState)

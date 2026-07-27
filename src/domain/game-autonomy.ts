@@ -12,6 +12,7 @@ const autonomousMissionActions = new Set<GameActionCommand['action']>([
   'wait',
   'stop',
 ])
+const autonomousEvasionActions = new Set<GameActionCommand['action']>(['move_to', 'navigate_to', 'stop'])
 
 export const autonomousMissionActionBudget = 96
 
@@ -22,8 +23,10 @@ export function gameActionRequiresHumanReview(
 ) {
   if (policy.gameplay !== 'autonomous-mission') return true
   if (!autonomousMissionActions.has(action)) return true
-  if (observation.player.health <= 8) return true
-  return observation.environment.threatLevel === 'high'
+  if (observation.player.health <= 8 || observation.environment.threatLevel === 'high') {
+    return !autonomousEvasionActions.has(action)
+  }
+  return false
 }
 
 export function autonomousProposalFingerprint(

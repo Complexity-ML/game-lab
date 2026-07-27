@@ -69,6 +69,7 @@ export interface GameObservation {
     kind: 'player' | 'npc' | 'vehicle' | 'object' | 'checkpoint'
     distance: number
     state?: string
+    position?: { x: number; y: number; z: number }
   }>
   gameState?: {
     kind: 'minecraft'

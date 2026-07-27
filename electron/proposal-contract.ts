@@ -56,6 +56,7 @@ const gameActionTypes = new Set<NonNullable<ValidatedProposalAction['game_action
 const autonomousMissionGameActions = new Set<NonNullable<ValidatedProposalAction['game_action']>>([
   'move_to', 'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'use_item', 'wait', 'stop',
 ])
+const autonomousEvasionGameActions = new Set<NonNullable<ValidatedProposalAction['game_action']>>(['move_to', 'navigate_to', 'stop'])
 const cardNames: Record<ProposalCardKind, string> = { control: 'GAME LAB Control', explorer: 'World Explorer', worker: 'Mission Worker', query: 'Telemetry Query', server: 'Game Server', agent: 'Game Agent', source: 'Evidence Source', profile: 'Telemetry Snapshot', analysis: 'Game Analysis', impact: 'Player Impact', risk: 'Operational Risk', patch: 'Server Patch', monitor: 'Live Monitor', parallel: 'Parallel Agents', diagram: 'Incident Diagram', split: 'Split', decision: 'Agent Decision', transform: 'Action Transform', review: 'Human Review', validation: 'Safety Check', output: 'Game Result' }
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const maximumNodes = 400
@@ -261,8 +262,10 @@ function autonomousGameplayError(payload: unknown, actions: ValidatedProposalAct
   const observation = record(runtime.observation, 'Agent request gameRuntime observation')
   const player = record(observation.player, 'Agent request gameRuntime observation player')
   const environment = record(observation.environment, 'Agent request gameRuntime observation environment')
-  if (typeof player.health !== 'number' || player.health <= 8) return 'Low player health requires Human Review'
-  if (environment.threatLevel === 'high') return 'High environmental threat requires Human Review'
+  if (typeof player.health !== 'number') return 'Autonomous gameplay requires valid player health'
+  if ((player.health <= 8 || environment.threatLevel === 'high') && !autonomousEvasionGameActions.has(gameAction.game_action)) {
+    return 'Unsafe player state allows only autonomous movement or stop; other actions require Human Review'
+  }
   const args = gameAction.game_action_args
   if (!args) return 'Autonomous gameplay action arguments are missing'
   if ((args.max_distance ?? 0) > 64) return 'Autonomous mission search distance cannot exceed 64 blocks'

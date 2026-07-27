@@ -154,6 +154,7 @@ GAME LAB is designed for servers you own or are explicitly authorized to operate
 - Server commands are allowlisted and reviewed.
 - Agent actions are limited to private evaluation environments.
 - Human Review protects material commands and policy promotion.
+- Minecraft agents perform an immediate host-owned defensive retreat when damaged; GPT then replans from the fresh post-retreat observation.
 - Emergency stop is a mandatory Game Agent contract.
 - Every committed graph revision is restorable.
 - Closing GAME LAB stops monitors and agent actions; no hidden service is installed.

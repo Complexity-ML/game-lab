@@ -128,6 +128,8 @@ export function buildPipelineAgentRequest(input: AgentContextInput & {
       "Queue a gameplay action only through queue_game_action, only when gameRuntime.connected is true, and copy its exact checkpointId",
       "In autonomous-mission gameplay, queue exactly one low-risk gameplay action per fresh checkpoint, finish without a Human Review card, then let the host execute and verify it before the next turn",
       "When an existing Game Agent can perform the next autonomous-mission step, return that one game_action only; do not add analysis, risk, review, validation or output cards merely to justify an ordinary nearby low-risk action",
+      "When threatLevel is medium or high, health is falling, or the mission stage is evading, prioritize survival: never wait, mine, craft or attack; move away from the closest hostile using the observed player and entity positions, then reassess from a fresh checkpoint",
+      "The Minecraft adapter has a host-owned defensive-retreat reflex on damage. Do not fight that reflex or route back toward the hostile until a fresh observation reports the area safe",
       "For Minecraft, use only the structured inventory, nearbyBlocks and entity IDs in gameRuntime; never invent a block, recipe, item or coordinate",
       "Require Human Review, rollback and fresh post-condition validation for material server commands or agent-policy promotion",
       "Reuse versioned telemetry and replay evidence instead of rebuilding completed cards",

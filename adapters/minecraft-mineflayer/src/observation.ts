@@ -1,4 +1,5 @@
 import type { Bot } from 'mineflayer'
+import { isHostileMob } from './safety.js'
 
 export interface ObservationRuntime {
   checkpointId: string
@@ -36,12 +37,16 @@ export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
   const position = bot.entity.position
   const entities = Object.values(bot.entities)
     .filter((entity) => entity !== bot.entity && entity.position)
-    .map((entity) => ({
-      id: `entity-${entity.id}`,
-      kind: entity.type === 'player' ? 'player' as const : entity.type === 'mob' ? 'npc' as const : entity.type === 'object' ? 'object' as const : 'object' as const,
-      distance: Number(distance(position, entity.position).toFixed(2)),
-      state: `${entity.name ?? entity.displayName ?? entity.type}`.slice(0, 120),
-    }))
+    .map((entity) => {
+      const state = `${entity.name ?? entity.displayName ?? entity.type}`.slice(0, 120)
+      return {
+        id: `entity-${entity.id}`,
+        kind: entity.type === 'player' ? 'player' as const : isHostileMob(state) || entity.type === 'mob' ? 'npc' as const : 'object' as const,
+        distance: Number(distance(position, entity.position).toFixed(2)),
+        state,
+        position: { x: entity.position.x, y: entity.position.y, z: entity.position.z },
+      }
+    })
     .filter((entity) => entity.distance <= 64)
     .sort((left, right) => left.distance - right.distance)
     .slice(0, 32)
@@ -70,7 +75,13 @@ export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
       area: bot.game?.dimension ?? 'minecraft:unknown',
       weather: bot.isRaining ? 'rain' : 'clear',
       time: String(timeOfDay),
-      threatLevel: entities.some((entity) => entity.kind === 'npc' && /zombie|skeleton|creeper|spider|witch|pillager/i.test(entity.state)) ? 'medium' as const : 'none' as const,
+      threatLevel: entities.some((entity) => entity.kind === 'npc' && isHostileMob(entity.state) && entity.distance <= 8)
+        ? 'high' as const
+        : entities.some((entity) => entity.kind === 'npc' && isHostileMob(entity.state) && entity.distance <= 24)
+          ? 'medium' as const
+          : entities.some((entity) => entity.kind === 'npc' && isHostileMob(entity.state))
+            ? 'low' as const
+            : 'none' as const,
     },
     nearby: entities,
     gameState: {

@@ -379,7 +379,7 @@ export function SettingsModal(props: SettingsModalProps) {
               <button aria-checked={autonomyPolicy.uncertainty === 'bounded'} className={autonomyPolicy.uncertainty === 'bounded' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, uncertainty: 'bounded' })} role="radio" type="button"><strong>Bounded work</strong><small>Allow reversible graph-only work, never unverified game claims.</small></button>
             </div>
           </section>
-          <p className="settings-note">Autonomous mission still pauses for combat, entity or vehicle interaction, low health, elevated danger and policy changes. Emergency stop remains immediate.</p>
+          <p className="settings-note">Autonomous mission retreats immediately under attack. Combat, entity or vehicle interaction, non-evasive actions during low health or elevated danger, and policy changes still pause for review. Emergency stop remains immediate.</p>
         </article>}
 
         {activeSection === 'workspaces' && <article className="settings-page">

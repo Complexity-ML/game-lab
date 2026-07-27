@@ -49,7 +49,7 @@ export function autonomyPolicyInstructions(policy: AutonomyPolicy) {
       ? 'When evidence is incomplete or conflicting, report the evidence gap and return no graph mutation.'
       : 'When evidence is incomplete, allow only reversible graph-only low-risk work; never assert a gameplay anomaly without fresh evidence.'
   const gameplay = policy.gameplay === 'autonomous-mission'
-    ? 'Run the private-game mission as a continuous observe-act-verify loop. Queue exactly one fresh-checkpoint action per iteration. Navigation, mining, placing, crafting, equipping, item use, waiting and stopping may execute without per-action review while health and threat remain safe. Combat, entity interaction, vehicles, elevated threat, low health and policy changes still require Human Review.'
+    ? 'Run the private-game mission as a continuous observe-act-verify loop. Queue exactly one fresh-checkpoint action per iteration. Navigation, mining, placing, crafting, equipping, item use, waiting and stopping may execute without per-action review while health and threat remain safe. Defensive movement remains autonomous under attack; combat, entity interaction, vehicles, non-evasive actions during elevated threat or low health, and policy changes require Human Review.'
     : 'Require Human Review before every gameplay action.'
   return { review, risk, uncertainty, gameplay }
 }
