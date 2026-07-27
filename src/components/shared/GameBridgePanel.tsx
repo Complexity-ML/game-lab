@@ -25,7 +25,7 @@ export function GameBridgePanel() {
     try {
       const nextStatus = await window.gameLab.getGameBridgeStatus()
       setStatus(nextStatus)
-      if (readObservation && nextStatus.mode === 'connected') setObservation(await window.gameLab.getGameObservation())
+      if (readObservation && nextStatus.mode === 'connected') setObservation(await window.gameLab.getGameObservation('manual'))
       setCheckpoints(await window.gameLab.listGameCheckpoints(8))
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : 'Game Bridge request failed.')
@@ -101,12 +101,12 @@ export function GameBridgePanel() {
     {observation && <div className="game-observation-summary">
       <ShieldAlert size={17} />
       <div>
-        <strong>{observation.mission.objective}</strong>
-        <small>Checkpoint {observation.checkpointId} · {observation.mission.stage} · {observation.environment.area} · health {observation.player.health} · {observation.nearby.length} nearby entities{observation.gameState?.kind === 'minecraft' ? ` · food ${observation.gameState.food}/20 · ${observation.gameState.inventory.length} inventory stacks · ${observation.gameState.nearbyBlocks.length} nearby blocks` : ''}</small>
+        <strong>{observation.activity ? `${observation.activity.state} · ${observation.activity.reason}` : observation.mission.objective}</strong>
+        <small>Checkpoint {observation.checkpointId} · source {observation.activity?.source ?? 'manual'} · {observation.environment.area} · health {observation.player.health}{observation.activity ? ` (${observation.activity.healthDelta > 0 ? '+' : ''}${observation.activity.healthDelta}) · ${observation.activity.hostileCount} hostile · last: ${observation.activity.lastAction}` : ''} · {observation.nearby.length} nearby entities{observation.gameState?.kind === 'minecraft' ? ` · food ${observation.gameState.food}/20 · ${observation.gameState.inventory.length} inventory stacks · ${observation.gameState.nearbyBlocks.length} nearby blocks` : ''}</small>
       </div>
     </div>}
     {checkpoints.length > 0 && <div className="game-checkpoint-list">
-      {checkpoints.map((checkpoint) => <div key={checkpoint.id}><span>{checkpoint.kind === 'action' ? checkpoint.action : 'observation'}</span><small>{checkpoint.status} · {checkpoint.summary}</small></div>)}
+      {checkpoints.map((checkpoint) => <div key={checkpoint.id}><span>{checkpoint.kind === 'action' ? checkpoint.action : 'observation'} · {new Date(checkpoint.createdAt).toLocaleTimeString()}</span><small>{checkpoint.status} · {checkpoint.summary}</small></div>)}
     </div>}
     {feedback && <p aria-live="polite" className="settings-feedback">{feedback}</p>}
     <p className="settings-note">No screenshot and no GraphQL are used. GPT receives only this bounded state. Gameplay actions are allowlisted, tied to the exact observation checkpoint and require Human Review before execution.</p>

@@ -12,6 +12,7 @@ import { ensureAutonomousSystemCards } from '../domain/autonomous-system'
 import { classifyConnectivityFailure } from '../domain/connectivity'
 import { recordDiagnostic } from '../domain/diagnostics'
 import { autonomousMissionActionBudget, autonomousProposalFingerprint, gameActionRequiresHumanReview } from '../domain/game-autonomy'
+import type { GameObservationSource } from '../domain/game-bridge'
 import type { IncidentEventInput, IncidentSummary } from '../domain/incidents'
 import { defaultBlankObjective, resolveAgentObjective } from '../domain/agent-objective'
 import { applyProposal, type AgentProposal, type PipelineNode } from '../domain/pipeline'
@@ -63,6 +64,9 @@ function runtimeEvidence(observation: Awaited<ReturnType<NonNullable<typeof wind
   const evidence = [
     `Game Bridge checkpoint ${observation.checkpointId}: mission=${observation.mission.objective}; stage=${observation.mission.stage}; area=${observation.environment.area}; health=${observation.player.health}; armor=${observation.player.armor}; speed=${observation.player.speed}; threat=${observation.environment.threatLevel}; nearby=${observation.nearby.length}.`,
   ]
+  if (observation.activity) {
+    evidence.unshift(`Game activity: state=${observation.activity.state}; source=${observation.activity.source}; reason=${observation.activity.reason}; last_action=${observation.activity.lastAction}; health_delta=${observation.activity.healthDelta}; hostile_count=${observation.activity.hostileCount}${observation.activity.nearestHostile ? `; nearest_hostile=${observation.activity.nearestHostile.state ?? observation.activity.nearestHostile.id}@${observation.activity.nearestHostile.distance}` : ''}.`)
+  }
   if (observation.gameState?.kind === 'minecraft') {
     evidence.unshift(`Minecraft state: version=${observation.gameState.version}; dimension=${observation.gameState.dimension}; food=${observation.gameState.food}/20; experience_level=${observation.gameState.experienceLevel}; inventory=${observation.gameState.inventory.map((item) => `${item.name}x${item.count}`).join(', ') || 'empty'}; nearby_blocks=${[...new Set(observation.gameState.nearbyBlocks.map((block) => block.name))].slice(0, 24).join(', ') || 'none loaded'}.`)
   }
@@ -92,6 +96,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
   const atomicRepairState = useRef<AtomicRepairState | undefined>(undefined)
   const autonomousActionCount = useRef(0)
   const autonomousNoProgressCount = useRef(0)
+  const nextObservationSource = useRef<GameObservationSource>('autonomous_loop')
 
   const queueAutonomousStep = (objective: string, sessionId = playerSessionId.current, delayMs = 650) => {
     if (autonomousSchedulingBlocked.current || playerSessionId.current !== sessionId) return
@@ -140,6 +145,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         return { completed: false, receipt }
       }
     }
+    nextObservationSource.current = 'post_action'
     return { completed: true, receipt: undefined }
   }
 
@@ -189,7 +195,9 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
     const executionNodes = applyAtomicRunState(nodes, atomicRun)
     setNodes((current) => applyAtomicRunState(current, atomicRun))
     try {
-      const observation = await window.gameLab.getGameObservation()
+      const observationSource = nextObservationSource.current
+      nextObservationSource.current = 'autonomous_loop'
+      const observation = await window.gameLab.getGameObservation(observationSource)
       if (agentRunId.current !== runId) return
       if (expectedPlayerSessionId !== undefined && observation.mission.completed) {
         autonomousSchedulingBlocked.current = true
@@ -428,7 +436,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
     }
     let observation
     try {
-      observation = await window.gameLab.getGameObservation()
+      observation = await window.gameLab.getGameObservation('startup')
     } catch (error) {
       setSettingsSection('connections')
       setSettingsOpen(true)
@@ -441,6 +449,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
     atomicRepairState.current = undefined
     autonomousActionCount.current = 0
     autonomousNoProgressCount.current = 0
+    nextObservationSource.current = 'autonomous_loop'
     setAutonomousStepRequest(undefined)
     setAutonomousStepScheduled(false)
     setPlayerStarting(true)

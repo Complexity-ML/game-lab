@@ -28,6 +28,16 @@ describe('local structured Game Bridge', () => {
         sessionId: 'session-1',
         player: { position: { x: 1, y: 2, z: 3 }, heading: 90, speed: 0, health: 200, armor: 50, inVehicle: false },
         mission: { id: 'mission-1', objective: 'Reach the marker', stage: 'spawned', completed: false },
+        activity: {
+          state: 'threat_detected',
+          reason: 'Nearest hostile zombie at 6 blocks',
+          source: 'post_action',
+          lastAction: 'move_to completed',
+          stateChangedAt: '2026-07-27T11:59:58.000Z',
+          healthDelta: -2,
+          hostileCount: 1,
+          nearestHostile: { id: 'entity-9', state: 'zombie', distance: 6 },
+        },
         environment: { area: 'Private shard', threatLevel: 'none' },
         nearby: [{ id: 'marker-1', kind: 'checkpoint', distance: 12, position: { x: 12, y: 64, z: 20 } }],
         gameState: {
@@ -50,8 +60,8 @@ describe('local structured Game Bridge', () => {
       { save: (checkpoint) => checkpoints.push(checkpoint) },
     )
 
-    const observation = await client.observation()
-    expect(observation).toMatchObject({ checkpointId: 'checkpoint-1', mission: { objective: 'Reach the marker' }, nearby: [{ id: 'marker-1', position: { x: 12, y: 64, z: 20 } }], gameState: { kind: 'minecraft', food: 18, inventory: [{ name: 'oak_log', count: 4 }] } })
+    const observation = await client.observation('post_action')
+    expect(observation).toMatchObject({ checkpointId: 'checkpoint-1', mission: { objective: 'Reach the marker' }, activity: { state: 'threat_detected', source: 'post_action', healthDelta: -2, hostileCount: 1, nearestHostile: { state: 'zombie', distance: 6 } }, nearby: [{ id: 'marker-1', position: { x: 12, y: 64, z: 20 } }], gameState: { kind: 'minecraft', food: 18, inventory: [{ name: 'oak_log', count: 4 }] } })
 
     const receipt = await client.execute({
       action: 'mine_block',
@@ -61,7 +71,7 @@ describe('local structured Game Bridge', () => {
     expect(receipt).toMatchObject({ checkpointId: 'checkpoint-1', action: 'mine_block', status: 'completed' })
     expect(await client.emergencyStop()).toMatchObject({ stopped: true, summary: 'Stopped immediately' })
     expect(checkpoints).toMatchObject([
-      { kind: 'observation', checkpointId: 'checkpoint-1', status: 'captured' },
+      { kind: 'observation', checkpointId: 'checkpoint-1', status: 'captured', summary: expect.stringContaining('state=threat_detected; source=post_action') },
       { kind: 'action', checkpointId: 'checkpoint-1', action: 'mine_block', status: 'completed' },
     ])
   })

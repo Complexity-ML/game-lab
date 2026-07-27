@@ -58,7 +58,7 @@ declare global {
       getGameBridgeSettings(): Promise<GameBridgeSettings>
       saveGameBridgeSettings(settings: GameBridgeSettings): Promise<GameBridgeSettings>
       getGameBridgeStatus(): Promise<GameBridgeStatus>
-      getGameObservation(): Promise<GameObservation>
+      getGameObservation(source?: import('./domain/game-bridge').GameObservationSource): Promise<GameObservation>
       executeGameAction(command: GameActionCommand): Promise<GameActionReceipt>
       emergencyStopGameBridge(): Promise<{ stopped: boolean; commandId: string; summary: string }>
       listGameCheckpoints(limit?: number): Promise<GameCheckpointSummary[]>

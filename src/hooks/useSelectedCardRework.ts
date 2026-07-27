@@ -58,7 +58,7 @@ export function useSelectedCardRework(options: {
     const activeModel = options.activeAiSource === 'chatgpt' ? currentChatGPT.selectedModel ?? 'ChatGPT' : status.providers[options.activeAiSource].model
     options.setActivity(`${activeModel} is reviewing ${selected.data.label} with version context…`)
     try {
-      const observation = await window.gameLab.getGameObservation()
+      const observation = await window.gameLab.getGameObservation('card_rework')
       if (options.agentRunId.current !== runId) return
       const evidenceEntries: GameEvidence[] = [{
         tool: 'game_bridge.observation',

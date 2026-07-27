@@ -5,7 +5,7 @@
 GAME LAB can give GPT a bounded structured game state without screenshots or GraphQL. The local adapter contract is `game-lab.control.v1`:
 
 - `GET /v1/status` reports adapter and session health.
-- `GET /v1/observation` returns player, mission, environment and nearby-entity state with a checkpoint ID.
+- `GET /v1/observation?source=manual|startup|autonomous_loop|post_action|card_rework` returns player, mission, environment, nearby entities and a reasoned activity state with a checkpoint ID.
 - `POST /v1/actions` accepts one allowlisted action tied to that exact checkpoint.
 - `POST /v1/stop` immediately stops movement and queued actions.
 
@@ -15,7 +15,7 @@ For the local demo:
 npm run bridge:demo
 ```
 
-Then open **Settings → Connections → Local Game Bridge**, keep `http://127.0.0.1:4317`, and select **Save & connect**. In version 1, GAME LAB and the game adapter intentionally run on the same computer. In **Autonomous mission** mode GPT continuously observes, performs one low-risk checkpoint-bound action, waits for its real completion, verifies the changed world and plans the next step. Combat, entity or vehicle interaction, low health, elevated danger and policy changes still require Human Review. Every observation and action receipt is stored as a workspace-scoped SQLite checkpoint.
+Then open **Settings → Connections → Local Game Bridge**, keep `http://127.0.0.1:4317`, and select **Save & connect**. In version 1, GAME LAB and the game adapter intentionally run on the same computer. In **Autonomous mission** mode GPT continuously observes, performs one low-risk checkpoint-bound action, waits for its real completion, verifies the changed world and plans the next step. Combat, entity or vehicle interaction, low health, elevated danger and policy changes still require Human Review. Every observation and action receipt is stored as a workspace-scoped SQLite checkpoint. Observation activity records distinguish `safe`, `threat_detected`, `evading`, `acting`, `blocked` and stopped states, with the trigger source, reason, last action, health delta and nearest-hostile evidence.
 
 ## Minecraft · Mineflayer adapter
 

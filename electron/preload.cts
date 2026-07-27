@@ -106,7 +106,7 @@ contextBridge.exposeInMainWorld('gameLab', {
   getGameBridgeSettings: () => ipcRenderer.invoke(gameBridgeSettingsChannel),
   saveGameBridgeSettings: (payload: { endpoint: string }) => ipcRenderer.invoke(gameBridgeSettingsSaveChannel, payload),
   getGameBridgeStatus: () => ipcRenderer.invoke(gameBridgeStatusChannel),
-  getGameObservation: () => ipcRenderer.invoke(gameBridgeObservationChannel),
+  getGameObservation: (source?: string) => ipcRenderer.invoke(gameBridgeObservationChannel, source),
   executeGameAction: (payload: unknown) => ipcRenderer.invoke(gameBridgeActionChannel, payload),
   emergencyStopGameBridge: () => ipcRenderer.invoke(gameBridgeStopChannel),
   listGameCheckpoints: (limit = 20) => ipcRenderer.invoke(gameBridgeCheckpointsChannel, { limit }),

@@ -10,6 +10,8 @@ const actionTypes = new Set([
   'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item',
   'wait', 'stop',
 ])
+const activityStates = new Set(['connecting', 'safe', 'threat_detected', 'evading', 'acting', 'blocked', 'stopped', 'disconnected'])
+const observationSources = new Set(['manual', 'startup', 'autonomous_loop', 'post_action', 'card_rework'])
 
 type SettingsStore = {
   load(key: string): string | null
@@ -127,6 +129,31 @@ function normalizeObservation(value: unknown) {
       } : {}),
     }
   }) : []
+  const rawActivity = input.activity && typeof input.activity === 'object' && !Array.isArray(input.activity)
+    ? input.activity as JsonRecord
+    : undefined
+  const rawNearestHostile = rawActivity?.nearestHostile && typeof rawActivity.nearestHostile === 'object' && !Array.isArray(rawActivity.nearestHostile)
+    ? rawActivity.nearestHostile as JsonRecord
+    : undefined
+  const fallbackActivityState = threatLevel === 'none' ? 'safe' : 'threat_detected'
+  const activityState = activityStates.has(String(rawActivity?.state)) ? String(rawActivity?.state) as 'connecting' | 'safe' | 'threat_detected' | 'evading' | 'acting' | 'blocked' | 'stopped' | 'disconnected' : fallbackActivityState
+  const activitySource = observationSources.has(String(rawActivity?.source)) ? String(rawActivity?.source) as 'manual' | 'startup' | 'autonomous_loop' | 'post_action' | 'card_rework' : 'manual'
+  const activity = {
+    state: activityState,
+    reason: boundedText(rawActivity?.reason, 'Game activity reason', 500, threatLevel === 'none' ? 'No active threat reported' : `Threat level ${threatLevel}`),
+    source: activitySource,
+    lastAction: boundedText(rawActivity?.lastAction, 'Game activity last action', 500, 'Observation captured'),
+    stateChangedAt: boundedText(rawActivity?.stateChangedAt, 'Game activity state timestamp', 40, String(input.capturedAt ?? new Date().toISOString())),
+    healthDelta: optionalBoundedNumber(rawActivity?.healthDelta, 'Game activity health delta', -10_000, 10_000) ?? 0,
+    hostileCount: optionalBoundedNumber(rawActivity?.hostileCount, 'Game activity hostile count', 0, 32) ?? 0,
+    ...(rawNearestHostile ? {
+      nearestHostile: {
+        id: optionalIdentifier(rawNearestHostile.id, 'Nearest hostile ID') ?? 'hostile-unknown',
+        state: typeof rawNearestHostile.state === 'string' ? rawNearestHostile.state.trim().slice(0, 120) : undefined,
+        distance: boundedNumber(rawNearestHostile.distance, 'Nearest hostile distance', 0, 10_000),
+      },
+    } : {}),
+  }
   const rawGameState = input.gameState && typeof input.gameState === 'object' && !Array.isArray(input.gameState)
     ? input.gameState as JsonRecord
     : undefined
@@ -185,6 +212,7 @@ function normalizeObservation(value: unknown) {
       stage: boundedText(mission.stage, 'Mission stage', 120, 'unknown'),
       completed: mission.completed === true,
     },
+    activity,
     environment: {
       area: boundedText(environment.area, 'Environment area', 120, 'unknown'),
       weather: typeof environment.weather === 'string' ? environment.weather.trim().slice(0, 80) : undefined,
@@ -253,10 +281,15 @@ export class GameBridgeClient {
     }
   }
 
-  async observation() {
+  async observation(source: unknown = 'manual') {
     const { endpoint } = this.configuration()
-    const observation = normalizeObservation(await jsonRequest(endpoint, '/v1/observation'))
-    const summary = `session=${observation.sessionId}; mission=${observation.mission.stage}; area=${observation.environment.area}; health=${observation.player.health}; nearby=${observation.nearby.length}`
+    const normalizedSource = observationSources.has(String(source)) ? String(source) : 'manual'
+    const observation = normalizeObservation(await jsonRequest(endpoint, `/v1/observation?source=${encodeURIComponent(normalizedSource)}`))
+    const healthDelta = observation.activity.healthDelta === 0 ? '0' : observation.activity.healthDelta > 0 ? `+${observation.activity.healthDelta}` : String(observation.activity.healthDelta)
+    const nearestHostile = observation.activity.nearestHostile
+      ? `; nearest_hostile=${observation.activity.nearestHostile.state ?? observation.activity.nearestHostile.id}@${observation.activity.nearestHostile.distance}`
+      : ''
+    const summary = `state=${observation.activity.state}; source=${observation.activity.source}; reason=${observation.activity.reason}; last_action=${observation.activity.lastAction}; health=${observation.player.health}; health_delta=${healthDelta}; threat=${observation.environment.threatLevel}; hostiles=${observation.activity.hostileCount}${nearestHostile}; nearby=${observation.nearby.length}`
     this.checkpoints.save({
       kind: 'observation',
       checkpointId: observation.checkpointId,

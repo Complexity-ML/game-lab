@@ -7,6 +7,10 @@ export interface ObservationRuntime {
   sessionId: string
   objective: string
   stage: string
+  stageChangedAt: string
+  lastAction: string
+  previousHealth?: number
+  source: 'manual' | 'startup' | 'autonomous_loop' | 'post_action' | 'card_rework'
 }
 
 function distance(left: { x: number; y: number; z: number }, right: { x: number; y: number; z: number }) {
@@ -51,6 +55,26 @@ export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
     .sort((left, right) => left.distance - right.distance)
     .slice(0, 32)
   const timeOfDay = bot.time?.timeOfDay ?? 0
+  const hostileEntities = entities.filter((entity) => entity.kind === 'npc' && isHostileMob(entity.state))
+  const threatLevel = hostileEntities.some((entity) => entity.distance <= 8)
+    ? 'high' as const
+    : hostileEntities.some((entity) => entity.distance <= 24)
+      ? 'medium' as const
+      : hostileEntities.length
+        ? 'low' as const
+        : 'none' as const
+  const nearestHostile = hostileEntities[0]
+  const activityState = ['evading', 'acting', 'blocked', 'stopped', 'connecting', 'disconnected'].includes(runtime.stage)
+    ? runtime.stage
+    : threatLevel === 'none'
+      ? 'safe'
+      : 'threat_detected'
+  const activityReason = activityState === 'safe'
+    ? 'No hostile mob detected within 64 blocks'
+    : activityState === 'threat_detected'
+      ? `${hostileEntities.length} hostile mob${hostileEntities.length === 1 ? '' : 's'} visible; nearest ${nearestHostile?.state ?? 'hostile'} at ${nearestHostile?.distance ?? 'unknown'} blocks`
+      : runtime.lastAction
+  const healthDelta = runtime.previousHealth === undefined ? 0 : Number((bot.health - runtime.previousHealth).toFixed(3))
   return {
     protocol: 'game-lab.control.v1' as const,
     observationId: runtime.observationId,
@@ -68,20 +92,30 @@ export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
     mission: {
       id: 'minecraft-private-mission',
       objective: runtime.objective,
-      stage: runtime.stage,
+      stage: activityState,
       completed: false,
+    },
+    activity: {
+      state: activityState,
+      reason: activityReason,
+      source: runtime.source,
+      lastAction: runtime.lastAction,
+      stateChangedAt: runtime.stageChangedAt,
+      healthDelta,
+      hostileCount: hostileEntities.length,
+      ...(nearestHostile ? {
+        nearestHostile: {
+          id: nearestHostile.id,
+          state: nearestHostile.state,
+          distance: nearestHostile.distance,
+        },
+      } : {}),
     },
     environment: {
       area: bot.game?.dimension ?? 'minecraft:unknown',
       weather: bot.isRaining ? 'rain' : 'clear',
       time: String(timeOfDay),
-      threatLevel: entities.some((entity) => entity.kind === 'npc' && isHostileMob(entity.state) && entity.distance <= 8)
-        ? 'high' as const
-        : entities.some((entity) => entity.kind === 'npc' && isHostileMob(entity.state) && entity.distance <= 24)
-          ? 'medium' as const
-          : entities.some((entity) => entity.kind === 'npc' && isHostileMob(entity.state))
-            ? 'low' as const
-            : 'none' as const,
+      threatLevel,
     },
     nearby: entities,
     gameState: {

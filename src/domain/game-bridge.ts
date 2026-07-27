@@ -5,6 +5,8 @@ export const gameActionTypes = [
 ] as const
 
 export type GameActionType = typeof gameActionTypes[number]
+export type GameObservationSource = 'manual' | 'startup' | 'autonomous_loop' | 'post_action' | 'card_rework'
+export type GameActivityState = 'connecting' | 'safe' | 'threat_detected' | 'evading' | 'acting' | 'blocked' | 'stopped' | 'disconnected'
 
 export interface GameActionArguments {
   targetX?: number
@@ -57,6 +59,16 @@ export interface GameObservation {
     objective: string
     stage: string
     completed: boolean
+  }
+  activity?: {
+    state: GameActivityState
+    reason: string
+    source: GameObservationSource
+    lastAction: string
+    stateChangedAt: string
+    healthDelta: number
+    hostileCount: number
+    nearestHostile?: { id: string; state?: string; distance: number }
   }
   environment: {
     area: string

@@ -6,6 +6,7 @@ import { parseActionCommand, protocol } from './protocol.js'
 import type { MinecraftController } from './minecraft-controller.js'
 
 const MAX_BODY_BYTES = 64_000
+const observationSources = new Set(['manual', 'startup', 'autonomous_loop', 'post_action', 'card_rework'])
 
 function json(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, {
@@ -29,6 +30,7 @@ export function startBridgeServer(config: AdapterConfig, controller: MinecraftCo
   const sessionId = `minecraft-${randomUUID().slice(0, 12)}`
   let observationSequence = 0
   let lastObservationAt: string | undefined
+  let lastObservedHealth: number | undefined
   let currentCheckpointId: string | undefined
   const commandIds = new Set<string>()
   const server = createServer(async (request, response) => {
@@ -55,13 +57,24 @@ export function startBridgeServer(config: AdapterConfig, controller: MinecraftCo
         const observationId = `minecraft-observation-${observationSequence}`
         currentCheckpointId = `minecraft-checkpoint-${observationSequence}`
         lastObservationAt = new Date().toISOString()
-        json(response, 200, buildObservation(controller.bot, {
+        const requestedSource = url.searchParams.get('source') ?? 'manual'
+        const source = observationSources.has(requestedSource)
+          ? requestedSource as 'manual' | 'startup' | 'autonomous_loop' | 'post_action' | 'card_rework'
+          : 'manual'
+        const status = controller.status()
+        const observation = buildObservation(controller.bot, {
           checkpointId: currentCheckpointId,
           observationId,
           sessionId,
           objective: config.missionObjective,
-          stage: controller.status().stage,
-        }))
+          stage: status.stage,
+          stageChangedAt: status.stageChangedAt,
+          lastAction: status.lastAction,
+          previousHealth: lastObservedHealth,
+          source,
+        })
+        lastObservedHealth = controller.bot.health
+        json(response, 200, observation)
         return
       }
       if (request.method === 'POST' && url.pathname === '/v1/actions') {

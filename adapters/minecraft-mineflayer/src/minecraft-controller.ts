@@ -34,6 +34,7 @@ export class MinecraftController {
   private connected = false
   private stage = 'connecting'
   private lastAction = 'Waiting for Minecraft connection'
+  private stageChangedAt = new Date().toISOString()
   private lastHealth = 20
   private defensiveRetreatGeneration = 0
   private defensiveRetreatCooldownUntil = 0
@@ -55,8 +56,7 @@ export class MinecraftController {
       this.connected = true
       this.lastHealth = this.bot.health
       this.safetyReflexEnabled = true
-      this.stage = 'observing'
-      this.lastAction = 'Minecraft bot spawned'
+      this.updateActivity('observing', 'Minecraft bot spawned')
     })
     this.bot.on('health', () => {
       const lostHealth = this.bot.health < this.lastHealth
@@ -65,53 +65,45 @@ export class MinecraftController {
     })
     this.bot.on('goal_reached', () => {
       if (this.stage === 'evading') {
-        this.stage = 'observing'
-        this.lastAction = 'Defensive retreat completed'
+        this.updateActivity('observing', 'Defensive retreat completed')
       }
     })
     this.bot.on('end', (reason) => {
       this.connected = false
-      this.stage = 'disconnected'
-      this.lastAction = `Minecraft disconnected: ${reason}`
+      this.updateActivity('disconnected', `Minecraft disconnected: ${reason}`)
     })
     this.bot.on('kicked', (reason) => {
       this.connected = false
-      this.stage = 'blocked'
-      this.lastAction = `Minecraft kicked: ${typeof reason === 'string' ? reason : JSON.stringify(reason)}`.slice(0, 500)
+      this.updateActivity('blocked', `Minecraft kicked: ${typeof reason === 'string' ? reason : JSON.stringify(reason)}`.slice(0, 500))
     })
     this.bot.on('error', (error) => {
-      this.stage = 'blocked'
-      this.lastAction = `Minecraft error: ${error.message}`.slice(0, 500)
+      this.updateActivity('blocked', `Minecraft error: ${error.message}`.slice(0, 500))
     })
   }
 
   status() {
-    return { connected: this.connected, stage: this.stage, lastAction: this.lastAction }
+    return { connected: this.connected, stage: this.stage, lastAction: this.lastAction, stageChangedAt: this.stageChangedAt }
   }
 
   enqueue(command: ActionCommand) {
     const generation = this.generation
     const defensiveRetreatGeneration = this.defensiveRetreatGeneration
     if (command.action !== 'stop') this.safetyReflexEnabled = true
-    this.stage = 'acting'
-    this.lastAction = `${command.action} queued`
+    this.updateActivity('acting', `${command.action} queued`)
     const action = this.queue.then(async () => {
         if (generation !== this.generation) throw new Error('Action cancelled by emergency stop')
         await this.execute(command, generation)
         if (generation === this.generation) {
-          this.stage = 'observing'
-          this.lastAction = `${command.action} completed`
+          this.updateActivity('observing', `${command.action} completed`)
         }
       })
     const tracked = action.catch((error) => {
       if (this.defensiveRetreatGeneration !== defensiveRetreatGeneration) {
-        this.stage = 'evading'
-        this.lastAction = `${command.action} interrupted by defensive retreat`
+        this.updateActivity('evading', `${command.action} interrupted by defensive retreat`)
         return
       }
       if (generation === this.generation) {
-        this.stage = 'blocked'
-        this.lastAction = `${command.action} failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500)
+        this.updateActivity('blocked', `${command.action} failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500))
       }
       throw error
     })
@@ -126,8 +118,7 @@ export class MinecraftController {
     this.bot.clearControlStates()
     this.bot.stopDigging()
     this.bot.deactivateItem()
-    this.stage = 'stopped'
-    this.lastAction = 'Emergency stop applied'
+    this.updateActivity('stopped', 'Emergency stop applied')
     return this.lastAction
   }
 
@@ -146,8 +137,13 @@ export class MinecraftController {
     this.bot.stopDigging()
     this.bot.deactivateItem()
     this.bot.pathfinder.setGoal(new goals.GoalNear(target.x, target.y, target.z, 2))
-    this.stage = 'evading'
-    this.lastAction = `Defensive retreat from ${hostile.name ?? hostile.displayName ?? 'hostile mob'} toward ${target.x},${target.y},${target.z}`
+    this.updateActivity('evading', `Defensive retreat from ${hostile.name ?? hostile.displayName ?? 'hostile mob'} toward ${target.x},${target.y},${target.z}`)
+  }
+
+  private updateActivity(stage: string, lastAction: string) {
+    if (this.stage !== stage) this.stageChangedAt = new Date().toISOString()
+    this.stage = stage
+    this.lastAction = lastAction
   }
 
   private entity(entityId: string | undefined) {
