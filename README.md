@@ -59,7 +59,7 @@ Actions are serialized, duplicate command IDs are rejected, and a command is acc
 [![Release](https://github.com/Complexity-ML/game-lab/actions/workflows/macos-release.yml/badge.svg)](https://github.com/Complexity-ML/game-lab/actions/workflows/macos-release.yml)
 [![Latest release](https://img.shields.io/github/v/release/Complexity-ML/game-lab?label=stable)](https://github.com/Complexity-ML/game-lab/releases/latest)
 
-GAME LAB is a local-first visual studio for private game-server operations and governed game agents. It combines an Electron workbench, a relational SQLite ledger and a small Tauri Setup that builds the native application locally for the current computer.
+GAME LAB is a local-first visual studio for private game-server operations and human-reviewed game agents. It combines an Electron workbench, a relational SQLite ledger and a small Tauri Setup that builds the native application locally for the current computer.
 
 Two first-class stickers extend the shared LAB graph:
 

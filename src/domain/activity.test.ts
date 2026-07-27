@@ -6,7 +6,7 @@ describe('agent action activity', () => {
     expect(isAgentActionActivity('Next autonomous iteration scheduled · rereading the graph and checkpoint…')).toBe(true)
     expect(isAgentActionActivity('gpt-5.6-sol is analyzing the graph and previous versions…')).toBe(true)
     expect(isAgentActionActivity('Graph is already current · no duplicate revision created · Live Monitor remains armed')).toBe(true)
-    expect(isAgentActionActivity('Catalog checkpoint 67/67 complete · model call boundary reached')).toBe(true)
+    expect(isAgentActionActivity('Game checkpoint complete · model call boundary reached')).toBe(true)
   })
 
   it('leaves unrelated interface messages in the complete live log only', () => {

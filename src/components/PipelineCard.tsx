@@ -1,10 +1,8 @@
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
-import { Binoculars, Bot, Braces, BrainCircuit, ChartColumn, ChartNetwork, CheckCircle2, CirclePause, CircleStop, CircleX, Cpu, Database, Dices, FileDiff, Gamepad2, GitBranch, LayoutDashboard, LoaderCircle, Network, Radar, SearchCheck, Send, Server, ShieldAlert, Sparkles, UserCheck, WandSparkles } from 'lucide-react'
+import { Activity, Binoculars, Bot, Braces, BrainCircuit, ChartNetwork, CheckCircle2, CirclePause, CircleStop, CircleX, Cpu, Dices, FileDiff, FileSearch, Gamepad2, GitBranch, LayoutDashboard, LoaderCircle, Network, Radar, SearchCheck, Send, Server, ShieldAlert, Sparkles, UserCheck, WandSparkles } from 'lucide-react'
 import { useEffect } from 'react'
 import type { PipelineNode } from '../domain/pipeline'
-import { parseCatalogExplorerPolicy } from '../domain/catalog-explorer-policy'
 import { parseRiskAssessmentRule } from '../domain/risk-assessment'
-import { parseQueryCheckRule } from '../domain/query-check'
 import { parseWorkerPolicy } from '../domain/worker-policy'
 
 const icons = {
@@ -14,8 +12,8 @@ const icons = {
   query: Braces,
   server: Server,
   agent: Gamepad2,
-  source: Database,
-  profile: ChartColumn,
+  source: FileSearch,
+  profile: Activity,
   analysis: BrainCircuit,
   impact: ChartNetwork,
   risk: ShieldAlert,
@@ -48,11 +46,8 @@ export function PipelineCard({ data, id, selected }: NodeProps<PipelineNode>) {
   const isOutput = data.kind === 'output'
   const isSource = data.kind === 'source' || data.kind === 'server'
   const workerPolicy = data.kind === 'worker' ? parseWorkerPolicy(data.rule) : undefined
-  const queryPolicy = data.kind === 'query' ? parseQueryCheckRule(data.rule) : undefined
   const isSystem = data.kind === 'control' || data.kind === 'explorer' || workerPolicy?.role === 'exploration'
   const risk = data.kind === 'risk' ? parseRiskAssessmentRule(data.rule) : undefined
-  const exploration = data.kind === 'explorer' ? data.exploration : undefined
-  const explorerPolicy = data.kind === 'explorer' ? parseCatalogExplorerPolicy(data.rule) : undefined
   const descriptionPreview = cardTextPreview(data.description)
 
   useEffect(() => {
@@ -72,9 +67,9 @@ export function PipelineCard({ data, id, selected }: NodeProps<PipelineNode>) {
       {data.kind === 'control' && <span className="control-mode-badge">Player</span>}
       {data.kind === 'server' && <span className="server-mode-badge">{data.serverTelemetry?.platform ?? 'Server'}</span>}
       {data.kind === 'agent' && <span className="agent-mode-badge">{data.agentTelemetry?.mode ?? 'Agent'}</span>}
-      {explorerPolicy && <span className="explorer-mode-badge">{explorerPolicy.scope === 'dataset' ? 'Focus' : 'Catalog'}</span>}
+      {data.kind === 'explorer' && <span className="explorer-mode-badge">World</span>}
       {workerPolicy && <span className="worker-mode-badge">{workerPolicy.role} · {workerPolicy.concurrency}×</span>}
-      {queryPolicy && <span className="query-mode-badge">{queryPolicy.mode === 'governed_write' ? 'Governed POST' : queryPolicy.operation === 'profile.read' ? 'Aggregate read' : 'Metadata read'}</span>}
+      {data.kind === 'query' && <span className="query-mode-badge">Game read</span>}
       {risk && <span className={`risk-mode-badge severity-${risk.severity ?? 'unknown'}`}>{risk.domain} · {risk.severity ?? 'unscored'}</span>}
       {data.runState === 'running' && <span className="run-badge is-running"><LoaderCircle size={10} /> Running</span>}
       {data.runState === 'completed' && <span className="run-badge is-complete">#{data.runSequence}</span>}
@@ -98,42 +93,21 @@ export function PipelineCard({ data, id, selected }: NodeProps<PipelineNode>) {
       <small>{data.agentTelemetry.objective}</small>
       <small>Safety: private server only{data.agentTelemetry.lastAction ? ` · last: ${data.agentTelemetry.lastAction}` : ''}</small>
     </div>}
-    {data.profile && <div className="profile-summary" aria-label="Compact data profile">
-      <span><strong>{data.profile.aggregateAudit.rowCount ?? '—'}</strong> rows</span>
-      <span><strong>{data.profile.aggregateAudit.profiledFieldCount}</strong> profiled</span>
-      <span><strong>{data.profile.aggregateAudit.riskSignals.length}</strong> value risks</span>
-      <span><strong>{data.profile.sensitiveFieldCount}</strong> sensitive</span>
-      <small>{data.profile.aggregateAudit.status.replace('_', ' ')} · raw rows excluded · ~{data.profile.tokenEstimate} tokens</small>
-    </div>}
     {risk && <div className="risk-summary" aria-label="Evidence-backed risk context">
       <span><strong>{risk.affectedAssets ?? '—'}</strong> affected</span>
       <span><strong>{risk.confidence === undefined ? '—' : `${Math.round(risk.confidence * 100)}%`}</strong> confidence</span>
       <span><strong>{risk.evidence ?? '—'}</strong> evidence</span>
       <span><strong>{risk.scope || '—'}</strong> scope</span>
     </div>}
-    {exploration && <div className="explorer-summary" aria-label="Catalog exploration progress">
-      <div className="explorer-progress-track"><i style={{ width: `${exploration.total ? Math.min(100, Math.round((exploration.inspected / exploration.total) * 100)) : 0}%` }} /></div>
-      <span><strong>{exploration.inspected}/{exploration.total || '?'}</strong> checked</span>
-      <span><strong>{exploration.dataAuditRemaining ?? exploration.remaining ?? Math.max(0, exploration.total - exploration.inspected)}</strong> queued</span>
-      <span><strong>{exploration.dataAudited ?? 0}</strong> profiled</span>
-      <span><strong>{exploration.incidents}</strong> data incidents</span>
-      <small>{exploration.dataAuditCoverageGaps ?? 0} coverage gaps · {explorerPolicy?.scope === 'dataset' ? 'Direct dataset fast path' : `Batch ${exploration.batchSize ?? explorerPolicy?.batchSize ?? 8}`} · {exploration.cacheMode ?? explorerPolicy?.cacheMode ?? 'prefer'} cache</small>
-    </div>}
     {workerPolicy && <div className="worker-summary" aria-label="Bounded worker policy">
       <span><strong>{workerPolicy.batchSize}</strong> batch</span>
       <span><strong>{workerPolicy.concurrency}</strong> concurrent</span>
       <small>{workerPolicy.context.replace('_', ' ')} · {workerPolicy.merge} merge · {workerPolicy.retry} recovery</small>
     </div>}
-    {queryPolicy && <div className="query-summary" aria-label="Verified query contract">
-      <span><strong>{queryPolicy.protocol ?? '—'}</strong> protocol</span>
-      <span><strong>{queryPolicy.operation ?? '—'}</strong> operation</span>
-      <span><strong>{queryPolicy.timeoutMs ?? '—'}</strong> ms</span>
-      <span><strong>{queryPolicy.response ?? '—'}</strong> response</span>
-    </div>}
     {data.rule && <code>{data.rule}</code>}
     <footer>
       <span>{data.owner}</span>
-      {(data.assetRef || data.datahubUrn) && <span className="datahub-badge">{data.sourceSystem ?? 'DataHub'}</span>}
+      {data.evidenceRef && <span className="evidence-badge">Game Bridge</span>}
     </footer>
     {!isOutput && !isSplit && !isSystem && <Handle className="pipeline-handle" position={Position.Right} type="source" />}
     {isOutput && <>

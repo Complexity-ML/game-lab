@@ -82,10 +82,10 @@ export const proposalCardCompatibility: Record<ProposalCardKind, readonly Propos
 }
 
 export function proposalConnectionCompatibilityError(source: ProposalCardKind, target: ProposalCardKind, sourceHandle: string | null) {
-  if (source === 'control' || target === 'control') return 'GAME LAB Control is a global policy and cannot enter lineage'
-  if (source === 'explorer' || target === 'explorer') return 'Catalog Explorer is a host-owned sidecar and cannot enter lineage'
+  if (source === 'control' || target === 'control') return 'GAME LAB Control is a global policy and cannot enter the action path'
+  if (source === 'explorer' || target === 'explorer') return 'World Explorer is a host-owned sidecar and cannot enter the action path'
   if (target === 'server') return 'Game Server must begin an operational path'
-  if (target === 'source') return 'Data Source must begin a lineage path'
+  if (target === 'source') return 'Game Evidence must begin an evidence path'
   if (source === 'output') return sourceHandle === 'feedback' && target === 'monitor' ? undefined : 'Output can connect only to Live Monitor through feedback'
   if (sourceHandle === 'feedback') return 'feedback is reserved for Output → Live Monitor'
   if (source === 'split' && !['approved', 'quarantine'].includes(sourceHandle ?? '')) return 'Split edges require approved or quarantine'
@@ -111,63 +111,40 @@ export function riskAssessmentRuleError(rule: string | null): string | undefined
   const affectedModels = affectedModelsValue === undefined ? undefined : Number(affectedModelsValue)
   const action = value('action')
   if (!scope || !action) return 'Risk Assessment scope and action must be non-empty'
-  if (riskDomain && !['general', 'data', 'ml', 'analytics', 'privacy', 'governance', 'security', 'reliability'].includes(riskDomain)) return 'Risk Assessment risk_domain is invalid'
-  if (!['data', 'collection', 'none'].includes(riskType ?? '')) return 'Risk Assessment risk_type must be data, collection or none'
+  if (riskDomain && !['general', 'gameplay', 'world', 'player', 'mission', 'performance', 'security', 'reliability'].includes(riskDomain)) return 'Risk Assessment risk_domain is invalid'
+  if (!['operational', 'safety', 'observation', 'none'].includes(riskType ?? '')) return 'Risk Assessment risk_type must be operational, safety, observation or none'
   if (!['critical', 'high', 'medium', 'low', 'unknown'].includes(severity ?? '')) return 'Risk Assessment severity is invalid'
   if (!['fresh', 'stale', 'unavailable'].includes(evidence ?? '')) return 'Risk Assessment evidence is invalid'
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return 'Risk Assessment confidence must be between 0 and 1'
   if (!Number.isInteger(affectedAssets) || affectedAssets < 0) return 'Risk Assessment affected_assets must be a non-negative integer'
   if (affectedModels !== undefined && (!Number.isInteger(affectedModels) || affectedModels < 0)) return 'Risk Assessment affected_models must be a non-negative integer'
-  if (riskType === 'data' && evidence !== 'fresh') return 'Data risk requires fresh versioned evidence; connector failures must use risk_type=collection'
-  if (riskType === 'data' && (severity === 'unknown' || affectedAssets === 0)) return 'Data risk requires a concrete severity and at least one affected asset'
-  if (riskType === 'collection' && affectedAssets > 0) return 'Collection reliability cannot claim affected data assets'
+  if ((riskType === 'operational' || riskType === 'safety') && evidence !== 'fresh') return 'Operational and safety risks require a fresh game observation'
+  if ((riskType === 'operational' || riskType === 'safety') && (severity === 'unknown' || affectedAssets === 0)) return 'Operational and safety risks require a concrete severity and at least one affected player or asset'
+  if (riskType === 'observation' && affectedAssets > 0) return 'Observation reliability cannot claim affected game assets'
   if (riskType === 'none' && (affectedAssets > 0 || !['unknown', 'low'].includes(severity ?? ''))) return 'risk_type=none cannot claim affected assets or elevated severity'
   return undefined
 }
 
-export function queryCheckRuleError(rule: string | null): string | undefined {
+export function gameQueryRuleError(rule: string | null): string | undefined {
   const values = new Map((rule ?? '').split(/\s*\|\s*/).flatMap((clause) => {
     const match = clause.match(/^\s*([a-z_]+)\s*=\s*(.+?)\s*$/i)
     return match ? [[match[1].toLowerCase(), match[2].trim().toLowerCase()] as const] : []
   }))
-  const connector = values.get('connector') ?? ''
   const operation = values.get('operation') ?? ''
-  const mode = values.get('mode')
   const timeout = Number(values.get('timeout_ms'))
-  const writeOperation = operation.endsWith('.write') || operation.endsWith('.update')
-  if (!/^[a-z][a-z0-9-]{1,31}$/.test(connector)) return 'Query Check requires a safe connector ID'
-  if (values.get('protocol') !== 'graphql') return 'Query Check supports protocol=graphql'
-  if (values.get('registry') !== 'connector_manifest') return 'Query Check operation must resolve through registry=connector_manifest'
-  if (!['catalog.search', 'entity.read', 'schema.read', 'lineage.read', 'profile.read', 'document.write', 'metadata.update'].includes(operation)) return 'Query Check operation is not registered'
-  if (!['read_only', 'governed_write'].includes(mode ?? '')) return 'Query Check mode must be read_only or governed_write'
-  if (values.get('variables') !== 'host_validated') return 'Query Check variables must be host_validated'
+  if (values.get('source') !== 'game_bridge') return 'Telemetry Query requires source=game_bridge'
+  if (operation !== 'observation.read') return 'Telemetry Query supports operation=observation.read'
+  if (values.get('mode') !== 'read_only') return 'Telemetry Query requires mode=read_only'
   if (!Number.isInteger(timeout) || timeout < 1_000 || timeout > 30_000) return 'Query Check timeout_ms must be between 1000 and 30000'
-  if (/__schema|__type/i.test(rule ?? '')) return 'Query Check forbids free GraphQL introspection'
-  if (writeOperation && (mode !== 'governed_write' || values.get('review') !== 'required' || values.get('dry_run') !== 'required' || values.get('rollback') !== 'versioned' || values.get('response') !== 'mutation_receipt')) {
-    return 'Governed writes require Human Review, dry-run, versioned rollback and a mutation receipt'
-  }
-  const aggregateRead = operation === 'profile.read'
-  const expectedReadResponse = aggregateRead ? 'bounded_aggregate_profile' : 'bounded_metadata'
-  if (!writeOperation && (mode !== 'read_only' || values.get('review') !== 'not_required' || values.get('dry_run') !== 'not_applicable' || values.get('rollback') !== 'not_applicable' || values.get('response') !== expectedReadResponse)) {
-    return aggregateRead
-      ? 'profile.read requires read_only mode and a bounded aggregate profile response'
-      : 'Read queries require read_only mode and a bounded metadata response'
-  }
   return undefined
 }
 
-export function catalogExplorerRuleError(rule: string | null): string | undefined {
+export function worldExplorerRuleError(rule: string | null): string | undefined {
   const normalized = rule?.toLowerCase() ?? ''
   const scope = normalized.match(/(?:^|\|)\s*scope\s*=\s*([^|]+)/)?.[1]?.trim()
-  if (!['dataset', 'all_datasets'].includes(scope ?? '')) return 'Catalog Explorer scope must be dataset or all_datasets'
-  if (scope === 'dataset' && !/(?:^|\|)\s*dataset_urn\s*=\s*\S+/.test(normalized)) return 'Focused Catalog Explorer requires dataset_urn'
-  const batchSize = Number(normalized.match(/(?:^|\|)\s*batch_size\s*=\s*(\d+)/)?.[1])
-  if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 32) return 'Catalog Explorer batch_size must be between 1 and 32'
-  const concurrency = Number(normalized.match(/(?:^|\|)\s*audit_concurrency\s*=\s*(\d+)/)?.[1])
-  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8) return 'Catalog Explorer audit_concurrency must be between 1 and 8'
-  if (!/(?:^|\|)\s*cache\s*=\s*(prefer|refresh)\b/.test(normalized)) return 'Catalog Explorer cache must be prefer or refresh'
-  if (!/(?:^|\|)\s*checkpoint\s*=\s*versioned\b/.test(normalized)) return 'Catalog Explorer requires checkpoint=versioned'
-  if (!/(?:^|\|)\s*resume\s*=\s*true\b/.test(normalized)) return 'Catalog Explorer requires resume=true'
+  if (scope !== 'nearby_world') return 'World Explorer requires scope=nearby_world'
+  if (!/(?:^|\|)\s*checkpoint\s*=\s*versioned\b/.test(normalized)) return 'World Explorer requires checkpoint=versioned'
+  if (!/(?:^|\|)\s*resume\s*=\s*true\b/.test(normalized)) return 'World Explorer requires resume=true'
   return undefined
 }
 
@@ -374,7 +351,7 @@ export function validateProposal(value: unknown, payload: unknown): ValidatedPro
         if (error) throw new Error(`Proposal action ${index + 1} · ${error}`)
       }
       if (action.kind === 'explorer') {
-        const error = catalogExplorerRuleError(action.rule)
+        const error = worldExplorerRuleError(action.rule)
         if (error) throw new Error(`Proposal action ${index + 1} · ${error}`)
       }
       if (action.kind === 'worker') {
@@ -382,7 +359,7 @@ export function validateProposal(value: unknown, payload: unknown): ValidatedPro
         if (error) throw new Error(`Proposal action ${index + 1} · ${error}`)
       }
       if (action.kind === 'query') {
-        const error = queryCheckRuleError(action.rule)
+        const error = gameQueryRuleError(action.rule)
         if (error) throw new Error(`Proposal action ${index + 1} · ${error}`)
       }
       if (nodeIds.has(action.node_id) || aliases.has(action.node_id)) throw new Error(`Proposal contains duplicate node id ${action.node_id}`)
@@ -397,7 +374,7 @@ export function validateProposal(value: unknown, payload: unknown): ValidatedPro
         if (error) throw new Error(`Proposal action ${index + 1} · ${error}`)
       }
       if ((action.kind === 'explorer' || explorerNodeIds.has(action.node_id)) && (action.kind === 'explorer' || action.rule !== null)) {
-        const error = catalogExplorerRuleError(action.rule)
+        const error = worldExplorerRuleError(action.rule)
         if (error) throw new Error(`Proposal action ${index + 1} · ${error}`)
       }
       if ((action.kind === 'worker' || workerNodeIds.has(action.node_id)) && (action.kind === 'worker' || action.rule !== null)) {
@@ -405,7 +382,7 @@ export function validateProposal(value: unknown, payload: unknown): ValidatedPro
         if (error) throw new Error(`Proposal action ${index + 1} · ${error}`)
       }
       if ((action.kind === 'query' || queryNodeIds.has(action.node_id)) && (action.kind === 'query' || action.rule !== null)) {
-        const error = queryCheckRuleError(action.rule)
+        const error = gameQueryRuleError(action.rule)
         if (error) throw new Error(`Proposal action ${index + 1} · ${error}`)
       }
       continue
@@ -419,7 +396,7 @@ export function validateProposal(value: unknown, payload: unknown): ValidatedPro
     if (!action.source || !action.target || action.source === action.target) throw new Error(`Proposal action ${index + 1} has invalid edge endpoints`)
     requireNull(action, ['node_id', 'kind', 'label', 'description', 'owner', 'rule', 'game_action', 'game_action_args', 'checkpoint_id'], index)
     if ((!nodeIds.has(action.source) && !aliases.has(action.source)) || (!nodeIds.has(action.target) && !aliases.has(action.target))) throw new Error(`Proposal action ${index + 1} contains a dangling edge`)
-    if (allExplorerNodeIds.has(action.source) || allExplorerNodeIds.has(action.target)) throw new Error(`Proposal action ${index + 1} cannot connect the host-owned Catalog Explorer sidecar to dataset lineage`)
+    if (allExplorerNodeIds.has(action.source) || allExplorerNodeIds.has(action.target)) throw new Error(`Proposal action ${index + 1} cannot connect the host-owned World Explorer sidecar to the action path`)
     if (action.source_handle && !['approved', 'quarantine', 'feedback'].includes(action.source_handle)) throw new Error(`Proposal action ${index + 1} has an invalid source handle`)
     const sourceKind = virtualKinds.get(action.source)
     const targetKind = virtualKinds.get(action.target)
@@ -430,11 +407,6 @@ export function validateProposal(value: unknown, payload: unknown): ValidatedPro
 
   if (nodeIds.size + aliases.size > maximumNodes || edgeIds.size - removedEdges.size + addedEdgeCount > maximumEdges) throw new Error('Proposal would grow the graph beyond the GAME LAB safety limits')
   const includesReview = actions.some((action) => action.kind === 'review' || (action.type === 'update_card' && Boolean(action.node_id && reviewNodeIds.has(action.node_id))))
-  const includesGovernedQueryWrite = actions.some((action) =>
-    action.rule !== null
-    && /(?:^|\|)\s*mode\s*=\s*governed_write\b/i.test(action.rule)
-    && (action.kind === 'query' || Boolean(action.node_id && queryNodeIds.has(action.node_id))))
-  if (includesGovernedQueryWrite && !proposal.requires_human_review) throw new Error('Governed Query Check writes require requires_human_review=true and a Human Review card action')
   if (actions.some((action) => action.type === 'game_action') && !proposal.requires_human_review) throw new Error('Gameplay actions require requires_human_review=true and a Human Review card action')
   if (proposal.requires_human_review && !includesReview) throw new Error('Human Review was requested without a Human Review card action')
   if (!proposal.requires_human_review && includesReview) throw new Error('Human Review card actions require requires_human_review=true')

@@ -34,15 +34,15 @@ export function autonomyPolicyInstructions(policy: AutonomyPolicy) {
       ? 'Require Human Review for critical/high risk, sensitive data, irreversible actions and external mutations; allow bounded reversible low-risk graph changes.'
       : 'Require Human Review when confidence is insufficient or impact is sensitive, structural or downstream.'
   const risk = policy.riskAnalysis === 'exhaustive'
-    ? 'Build branch-level Impact Analysis and Risk Assessment for every affected dataset, feature, pipeline, model and deployment supported by fresh evidence.'
+    ? 'Build branch-level Impact Analysis and Risk Assessment for every affected player, mission, world area, server resource and action supported by fresh evidence.'
     : policy.riskAnalysis === 'deep'
-      ? 'Follow every material schema or lineage impact with an atomic Risk Assessment covering affected asset classes, severity, confidence and action.'
+      ? 'Follow every material gameplay or server impact with an atomic Risk Assessment covering affected targets, severity, confidence and action.'
       : 'Add Risk Assessment when evidence indicates a material downstream impact.'
   const uncertainty = policy.uncertainty === 'review'
     ? 'When evidence is incomplete or conflicting, stop that branch at Human Review.'
     : policy.uncertainty === 'no-change'
       ? 'When evidence is incomplete or conflicting, report the evidence gap and return no graph mutation.'
-      : 'When evidence is incomplete, allow only reversible graph-only low-risk work; never assert a dataset anomaly without fresh evidence.'
+      : 'When evidence is incomplete, allow only reversible graph-only low-risk work; never assert a gameplay anomaly without fresh evidence.'
   return { review, risk, uncertainty }
 }
 

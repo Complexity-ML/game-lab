@@ -74,9 +74,9 @@ export function useWorkspacePersistence(options: WorkspacePersistenceOptions) {
   }
 
   useEffect(() => {
-    if (!window.dataLab) { setReady(true); return }
+    if (!window.gameLab) { setReady(true); return }
     let active = true
-    void window.dataLab.loadWorkspaceState().then((state) => {
+    void window.gameLab.loadWorkspaceState().then((state) => {
       if (!active) return
       applyManagerState(state, state.activeWorkspace
         ? `SQLite workspace restored · ${state.activeWorkspace.name} · ${state.activeWorkspace.payload.nodes.length} cards`
@@ -92,7 +92,7 @@ export function useWorkspacePersistence(options: WorkspacePersistenceOptions) {
   }, [])
 
   useEffect(() => {
-    if (!ready || !window.dataLab || saveState === 'recovering') return
+    if (!ready || !window.gameLab || saveState === 'recovering') return
     const serialized = JSON.stringify(payload)
     latestSnapshot.current = serialized
     if (!persistenceEnabled.current) {
@@ -100,7 +100,7 @@ export function useWorkspacePersistence(options: WorkspacePersistenceOptions) {
       if (!hasDurableContent || manager.activeWorkspaceId || autoCreatePending.current) return
       const timer = window.setTimeout(() => {
         autoCreatePending.current = true
-        void window.dataLab?.createWorkspace(projectTitle, payload).then((state) => {
+        void window.gameLab?.createWorkspace(projectTitle, payload).then((state) => {
           persistenceEnabled.current = true
           lastSnapshot.current = serialized
           setManager(state)
@@ -120,7 +120,7 @@ export function useWorkspacePersistence(options: WorkspacePersistenceOptions) {
     if (serialized === lastSnapshot.current) return
     setSaveState('unsaved')
     const timer = window.setTimeout(() => {
-      void window.dataLab?.autosaveWorkspace(payload).then((result) => {
+      void window.gameLab?.autosaveWorkspace(payload).then((result) => {
         if (!result.saved) return
         lastSnapshot.current = serialized
         if (latestSnapshot.current === serialized) setSaveState('saved')
@@ -140,14 +140,14 @@ export function useWorkspacePersistence(options: WorkspacePersistenceOptions) {
   }, [edges, inspectorOpen, libraryOpen, manager.activeWorkspaceId, nodes, projectTitle, ready, saveState, versions])
 
   const create = async (name: string, workspace = payload) => {
-    if (!window.dataLab) throw new Error('Workspace persistence requires the Electron application')
-    const state = await window.dataLab.createWorkspace(name, workspace)
+    if (!window.gameLab) throw new Error('Workspace persistence requires the Electron application')
+    const state = await window.gameLab.createWorkspace(name, workspace)
     applyManagerState(state, `Workspace created · ${state.activeWorkspace?.name ?? name}`)
   }
 
   const rename = async (workspaceId: string, name: string) => {
-    if (!window.dataLab) return
-    const workspaces = await window.dataLab.renameWorkspace(workspaceId, name)
+    if (!window.gameLab) return
+    const workspaces = await window.gameLab.renameWorkspace(workspaceId, name)
     setManager((current) => ({
       ...current,
       activeWorkspace: current.activeWorkspace?.id === workspaceId ? { ...current.activeWorkspace, name: name.trim() } : current.activeWorkspace,
@@ -157,14 +157,14 @@ export function useWorkspacePersistence(options: WorkspacePersistenceOptions) {
   }
 
   const duplicate = async (workspaceId: string) => {
-    if (!window.dataLab) return
-    const state = await window.dataLab.duplicateWorkspace(workspaceId)
+    if (!window.gameLab) return
+    const state = await window.gameLab.duplicateWorkspace(workspaceId)
     applyManagerState(state, `Workspace duplicated · ${state.activeWorkspace?.name ?? 'copy'}`)
   }
 
   const archive = async (workspaceId: string) => {
-    if (!window.dataLab) return
-    const state = await window.dataLab.archiveWorkspace(workspaceId)
+    if (!window.gameLab) return
+    const state = await window.gameLab.archiveWorkspace(workspaceId)
     if (state.activeWorkspace?.payload && isWorkspacePayload(state.activeWorkspace.payload)) {
       applyManagerState(state, `Workspace archived · opened ${state.activeWorkspace.name}`)
       return
@@ -177,26 +177,26 @@ export function useWorkspacePersistence(options: WorkspacePersistenceOptions) {
   }
 
   const remove = async (workspaceId: string) => {
-    if (!window.dataLab) return
-    const state = await window.dataLab.deleteWorkspace(workspaceId)
+    if (!window.gameLab) return
+    const state = await window.gameLab.deleteWorkspace(workspaceId)
     setManager(state)
     setActivity('Archived workspace deleted permanently')
     recordDiagnostic({ category: 'workspace', action: 'workspace.delete', status: 'info', detail: { workspaceId } })
   }
 
   const open = async (workspaceId: string) => {
-    if (!window.dataLab) return
-    const state = await window.dataLab.openWorkspace(workspaceId)
+    if (!window.gameLab) return
+    const state = await window.gameLab.openWorkspace(workspaceId)
     applyManagerState(state, `Workspace opened · ${state.activeWorkspace?.name ?? 'workspace'}`)
   }
 
   const save = async () => {
-    if (!window.dataLab) return
+    if (!window.gameLab) return
     if (!persistenceEnabled.current || !manager.activeWorkspaceId) {
       await create(projectTitle, payload)
       return
     }
-    const result = await window.dataLab.commitWorkspace(payload)
+    const result = await window.gameLab.commitWorkspace(payload)
     lastSnapshot.current = JSON.stringify(payload)
     setSaveState('saved')
     setManager((current) => ({
@@ -208,11 +208,11 @@ export function useWorkspacePersistence(options: WorkspacePersistenceOptions) {
   }
 
   const persistImported = async (workspace: WorkspacePayload) => {
-    if (!window.dataLab) return
+    if (!window.gameLab) return
     if (!persistenceEnabled.current || !manager.activeWorkspaceId) await create(workspace.projectTitle, workspace)
     else {
       applyPayload(workspace)
-      await window.dataLab.commitWorkspace(workspace)
+      await window.gameLab.commitWorkspace(workspace)
       lastSnapshot.current = JSON.stringify(workspace)
       setSaveState('saved')
     }
@@ -225,8 +225,8 @@ export function useWorkspacePersistence(options: WorkspacePersistenceOptions) {
   }
 
   const resolveRecovery = async (action: 'recover' | 'discard') => {
-    if (!window.dataLab) return
-    const state = await window.dataLab.resolveWorkspaceRecovery(action)
+    if (!window.gameLab) return
+    const state = await window.gameLab.resolveWorkspaceRecovery(action)
     applyManagerState(state, action === 'recover' ? 'Recovered autosaved draft after the interrupted session' : 'Discarded interrupted draft · restored last committed workspace')
     recordDiagnostic({ category: 'workspace', action: `recovery.${action}`, status: action === 'recover' ? 'success' : 'info', detail: { workspaceId: state.activeWorkspaceId } })
   }

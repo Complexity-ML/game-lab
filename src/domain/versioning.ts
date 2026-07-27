@@ -1,7 +1,7 @@
 import type { Edge } from '@xyflow/react'
 import type { PipelineNode } from './pipeline'
 import type { ValidationIssue } from '../validation'
-import type { DataHubEvidence } from './datahub'
+import type { GameEvidence } from './game-evidence'
 
 export interface PipelineVersion {
   id: string
@@ -13,12 +13,12 @@ export interface PipelineVersion {
   blockingIssues: number
   status?: 'committed' | 'pending-review' | 'rejected'
   description?: string
-  evidence?: DataHubEvidence[]
+  evidence?: GameEvidence[]
 }
 
 export interface PipelineVersionProvenanceExport {
   revision: Pick<PipelineVersion, 'id' | 'label' | 'createdAt' | 'origin' | 'status' | 'description'>
-  evidence: DataHubEvidence[]
+  evidence: GameEvidence[]
 }
 
 function copyGraph<T>(value: T): T {
@@ -71,9 +71,7 @@ function canonicalGraph(nodes: PipelineNode[], edges: Edge[]) {
     description: node.data.description,
     owner: node.data.owner,
     rule: node.data.rule,
-    connectorId: node.data.connectorId,
-    assetRef: node.data.assetRef,
-    datahubUrn: node.data.datahubUrn,
+    evidenceRef: node.data.evidenceRef,
     schema: node.data.schema,
   }))
   const nodeSignatures = new Map(nodes.map((node, index) => [node.id, JSON.stringify(semanticNodes[index])]))

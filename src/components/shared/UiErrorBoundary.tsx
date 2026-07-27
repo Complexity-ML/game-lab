@@ -27,8 +27,8 @@ export class UiErrorBoundary extends Component<{ children: ReactNode }, UiErrorB
         <code>{errorMessage(this.state.error, 'The interface stopped unexpectedly')}</code>
         <div>
           <button onClick={this.retry} type="button"><RefreshCw size={16} />Retry interface</button>
-          <button onClick={() => void window.dataLab?.openDiagnosticLogs()} type="button"><FolderOpen size={16} />Open local logs</button>
-          <button className="primary" onClick={() => void window.dataLab?.restartApplication()} type="button"><RotateCcw size={16} />Restart GAME LAB</button>
+          <button onClick={() => void window.gameLab?.openDiagnosticLogs()} type="button"><FolderOpen size={16} />Open local logs</button>
+          <button className="primary" onClick={() => void window.gameLab?.restartApplication()} type="button"><RotateCcw size={16} />Restart GAME LAB</button>
         </div>
       </section>
     </main>

@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Bot, CheckCircle2, Database, Download, FileDown, FolderKanban, FolderOpen, Gamepad2, Gauge, History, KeyRound, Languages, LayoutTemplate, LogIn, LogOut, Moon, Network, Palette, Play, RefreshCw, Save, Server, Settings, ShieldCheck, Sun, Trash2, UserRound, X } from 'lucide-react'
+import { Activity, AlertTriangle, Bot, CheckCircle2, Download, FileDown, FolderKanban, FolderOpen, Gamepad2, Gauge, History, KeyRound, Languages, LayoutTemplate, LogIn, LogOut, Moon, Network, Palette, Play, RefreshCw, Save, Server, Settings, ShieldCheck, Sun, Trash2, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ActiveAiSource, AiSettings, AiStatus, ApiProvider, ChatGPTSessionStatus } from '../../domain/ai'
 import type { PipelinePresetId } from '../../domain/pipeline'
@@ -12,7 +12,6 @@ import { useLanguage } from '../../i18n'
 import type { AppUpdateChannel, AppUpdateStatus } from '../../domain/updates'
 import type { DiagnosticBundle, DiagnosticSettings } from '../../domain/diagnostics'
 import type { AutonomyPolicy } from '../../domain/autonomy-policy'
-import type { CatalogConnectorKind, CatalogConnectorManifest, CatalogConnectorSummary } from '../../domain/catalog-connectors'
 import { GameBridgePanel } from './GameBridgePanel'
 
 export type SettingsSection = 'appearance' | 'workspaces' | 'ai' | 'autonomy' | 'connections' | 'updates' | 'diagnostics' | 'presets' | 'pipeline' | 'versions'
@@ -24,22 +23,9 @@ interface SettingsModalProps {
   aiStatus: AiStatus
   autonomyPolicy: AutonomyPolicy
   chatGPTStatus: ChatGPTSessionStatus
-  catalogConnectors: CatalogConnectorSummary[]
-  connectionMode: 'demo' | 'connected'
-  dataHubSettings: {
-    transport: 'http' | 'stdio'
-    url: string
-    catalogReadRoute?: 'auto' | 'gms' | 'mcp'
-    tokenConfigured: boolean
-    tokenSource: 'encrypted' | 'environment' | 'none'
-    encryptionAvailable: boolean
-    writebackEnabled: boolean
-  }
   errorCount: number
   findingCount: number
   incidentReportCount: number
-  mcpMessage: string
-  mcpTransport: 'demo' | 'http' | 'stdio'
   initialSection?: SettingsSection
   onAutoLayout: () => void
   onApprovePendingReview: (versionId: string) => void
@@ -56,7 +42,6 @@ interface SettingsModalProps {
   onEmergencyStop: () => void
   onDuplicateWorkspace: (workspaceId: string) => Promise<void>
   onDeleteWorkspace: (workspaceId: string) => Promise<void>
-  onDeleteCatalogConnector: (id: string) => Promise<unknown>
   onDownloadAppUpdate: () => Promise<AppUpdateStatus>
   onExportPipeline: () => void
   onExportDiagnostics: () => Promise<void>
@@ -73,12 +58,8 @@ interface SettingsModalProps {
   onRemindHumanReview: (version: VersionSummary) => void
   onRenameWorkspace: (workspaceId: string, name: string) => Promise<void>
   onSaveAiSettings: (settings: Partial<AiSettings> & { apiKey?: string; clearKey?: boolean }) => Promise<AiStatus>
-  onSaveCatalogConnector: (settings: CatalogConnectorManifest & { token?: string; clearToken?: boolean }) => Promise<unknown>
   onSelectActiveAiSource: (source: ActiveAiSource) => Promise<void>
   onSetAppUpdateChannel: (channel: AppUpdateChannel) => Promise<AppUpdateStatus>
-  onSaveDataHubSettings: (settings: { transport: 'http' | 'stdio'; url: string; catalogReadRoute?: 'auto' | 'gms' | 'mcp'; token?: string; clearToken?: boolean; writebackEnabled?: boolean }) => Promise<unknown>
-  onSyncDataHub: () => Promise<{ mode: 'demo' | 'connected'; message: string } | undefined>
-  onTestCatalogConnector: (id: string) => Promise<{ connected: boolean; message: string }>
   onTestAiConnection: () => Promise<void>
   onValidate: () => void
   onThemeChange: (theme: 'light' | 'dark') => void
@@ -96,20 +77,13 @@ interface SettingsModalProps {
 
 export function SettingsModal(props: SettingsModalProps) {
   const { language, setLanguage } = useLanguage()
-  const { activeAiSource, activeWorkspaceId, aiStatus, appUpdateBusy, appUpdateStatus, autonomyPolicy, catalogConnectors, chatGPTStatus, connectionMode, dataHubSettings, errorCount, findingCount, incidentReportCount, initialSection, mcpMessage, mcpTransport, onApprovePendingReview, onArchiveWorkspace, onAutoLayout, onAutonomyPolicyChange, onCancelChatGPTLogin, onCheckForAppUpdate, onClearIncidentReports, onClose, onConfigureChatGPT, onConnectChatGPT, onCreateWorkspace, onDeleteCatalogConnector, onDeleteWorkspace, onDisconnectChatGPT, onDownloadAppUpdate, onDuplicateWorkspace, onEmergencyStop, onExportDiagnostics, onExportPipeline, onImportPipeline, onInstallAppUpdate, onLoadDiagnostics, onLoadPreset, onOpenDiagnosticLogs, onOpenSetupUpdater, onOpenWorkspace, onRefreshAiModelCatalog, onRejectPendingReview, onRemindHumanReview, onRenameWorkspace, onRestoreVersion, onSaveAiSettings, onSaveCatalogConnector, onSaveDataHubSettings, onSaveDiagnosticSettings, onSaveVersion, onSaveWorkspace, onSelectActiveAiSource, onSetAppUpdateChannel, onSyncDataHub, onTestAiConnection, onTestCatalogConnector, onThemeChange, onValidate, projectTitle, selectedVersionId, theme, versions, workspaceSaveState, workspaces } = props
+  const { activeAiSource, activeWorkspaceId, aiStatus, appUpdateBusy, appUpdateStatus, autonomyPolicy, chatGPTStatus, errorCount, findingCount, incidentReportCount, initialSection, onApprovePendingReview, onArchiveWorkspace, onAutoLayout, onAutonomyPolicyChange, onCancelChatGPTLogin, onCheckForAppUpdate, onClearIncidentReports, onClose, onConfigureChatGPT, onConnectChatGPT, onCreateWorkspace, onDeleteWorkspace, onDisconnectChatGPT, onDownloadAppUpdate, onDuplicateWorkspace, onEmergencyStop, onExportDiagnostics, onExportPipeline, onImportPipeline, onInstallAppUpdate, onLoadDiagnostics, onLoadPreset, onOpenDiagnosticLogs, onOpenSetupUpdater, onOpenWorkspace, onRefreshAiModelCatalog, onRejectPendingReview, onRemindHumanReview, onRenameWorkspace, onRestoreVersion, onSaveAiSettings, onSaveDiagnosticSettings, onSaveVersion, onSaveWorkspace, onSelectActiveAiSource, onSetAppUpdateChannel, onTestAiConnection, onThemeChange, onValidate, projectTitle, selectedVersionId, theme, versions, workspaceSaveState, workspaces } = props
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection ?? 'appearance')
   const [aiSettings, setAiSettings] = useState(aiStatus.settings)
   const [aiBusy, setAiBusy] = useState(false)
   const [chatGPTConnecting, setChatGPTConnecting] = useState(false)
   const [chatGPTElapsed, setChatGPTElapsed] = useState(0)
   const [aiFeedback, setAiFeedback] = useState('')
-  const [dataHubBusy, setDataHubBusy] = useState(false)
-  const [dataHubFeedback, setDataHubFeedback] = useState('')
-  const [dataHubTransport, setDataHubTransport] = useState<'http' | 'stdio'>(dataHubSettings.transport)
-  const [dataHubCatalogReadRoute, setDataHubCatalogReadRoute] = useState<'auto' | 'gms' | 'mcp'>(dataHubSettings.catalogReadRoute ?? 'auto')
-  const [dataHubWriteback, setDataHubWriteback] = useState(dataHubSettings.writebackEnabled)
-  const [catalogKind, setCatalogKind] = useState<CatalogConnectorKind>('mcp')
-  const [catalogFeedback, setCatalogFeedback] = useState('')
   const [updateFeedback, setUpdateFeedback] = useState('')
   const [diagnosticBundle, setDiagnosticBundle] = useState<DiagnosticBundle>()
   const [diagnosticSettings, setDiagnosticSettings] = useState<DiagnosticSettings>({ enabled: true, level: 'all', retentionDays: 7, maximumEvents: 500 })
@@ -117,20 +91,11 @@ export function SettingsModal(props: SettingsModalProps) {
   const [reportsClearArmed, setReportsClearArmed] = useState(false)
   const apiKeyRef = useRef<HTMLInputElement>(null)
   const modelIdRef = useRef<HTMLInputElement>(null)
-  const dataHubUrlRef = useRef<HTMLInputElement>(null)
-  const dataHubTokenRef = useRef<HTMLInputElement>(null)
-  const catalogIdRef = useRef<HTMLInputElement>(null)
-  const catalogNameRef = useRef<HTMLInputElement>(null)
-  const catalogUrlRef = useRef<HTMLInputElement>(null)
-  const catalogTokenRef = useRef<HTMLInputElement>(null)
   const chatGPTConnectEpoch = useRef(0)
   const diagnosticLoaderRef = useRef(onLoadDiagnostics)
 
   useEffect(() => { if (initialSection) setActiveSection(initialSection) }, [initialSection])
   useEffect(() => { if (activeSection !== 'diagnostics') setReportsClearArmed(false) }, [activeSection])
-  useEffect(() => { setDataHubTransport(dataHubSettings.transport) }, [dataHubSettings.transport])
-  useEffect(() => { setDataHubCatalogReadRoute(dataHubSettings.catalogReadRoute ?? 'auto') }, [dataHubSettings.catalogReadRoute])
-  useEffect(() => { setDataHubWriteback(dataHubSettings.writebackEnabled) }, [dataHubSettings.writebackEnabled])
   useEffect(() => { diagnosticLoaderRef.current = onLoadDiagnostics }, [onLoadDiagnostics])
   useEffect(() => {
     if (!chatGPTConnecting) { setChatGPTElapsed(0); return }
@@ -184,77 +149,6 @@ export function SettingsModal(props: SettingsModalProps) {
       setReportsClearArmed(false)
     } catch (error) { notifyError(error, 'Unable to clear incident reports') }
     finally { setDiagnosticsBusy(false) }
-  }
-
-  const saveAndConnectDataHub = async () => {
-    setDataHubBusy(true)
-    setDataHubFeedback('')
-    try {
-      const token = dataHubTokenRef.current?.value.trim()
-      await onSaveDataHubSettings({ transport: dataHubTransport, url: dataHubUrlRef.current?.value.trim() ?? '', catalogReadRoute: dataHubCatalogReadRoute, token: token || undefined, writebackEnabled: dataHubWriteback })
-      if (dataHubTokenRef.current) dataHubTokenRef.current.value = ''
-      const status = await onSyncDataHub()
-      if (!status || status.mode !== 'connected') throw new Error(status?.message ?? 'DataHub MCP did not complete the connection handshake.')
-      setDataHubFeedback(status.message)
-    } catch (error) {
-      notifyError(error, 'Unable to connect DataHub MCP')
-      setDataHubFeedback(error instanceof Error ? error.message : 'Unable to connect DataHub MCP.')
-    } finally { setDataHubBusy(false) }
-  }
-
-  const removeDataHubToken = async () => {
-    setDataHubBusy(true)
-    setDataHubFeedback('')
-    try {
-      await onSaveDataHubSettings({ transport: dataHubTransport, url: dataHubUrlRef.current?.value.trim() || dataHubSettings.url, catalogReadRoute: dataHubCatalogReadRoute, clearToken: true, writebackEnabled: dataHubWriteback })
-      if (dataHubTokenRef.current) dataHubTokenRef.current.value = ''
-      setDataHubFeedback(dataHubSettings.tokenSource === 'environment' ? 'The app token was cleared. An environment token may remain active.' : 'The encrypted DataHub token was removed.')
-    } catch (error) {
-      notifyError(error, 'Unable to remove the DataHub token')
-      setDataHubFeedback(error instanceof Error ? error.message : 'Unable to remove the DataHub token.')
-    } finally { setDataHubBusy(false) }
-  }
-
-  const saveCustomConnector = async () => {
-    setDataHubBusy(true)
-    setCatalogFeedback('')
-    try {
-      const id = catalogIdRef.current?.value.trim() ?? ''
-      await onSaveCatalogConnector({
-        id,
-        name: catalogNameRef.current?.value.trim() ?? '',
-        kind: catalogKind,
-        url: catalogUrlRef.current?.value.trim() ?? '',
-        enabled: true,
-        contract: 'game-lab.catalog.v1',
-        ...(catalogKind === 'mcp' ? { searchTool: 'catalog_search', inspectTool: 'catalog_inspect' } : {}),
-        token: catalogTokenRef.current?.value.trim() || undefined,
-      })
-      if (catalogTokenRef.current) catalogTokenRef.current.value = ''
-      setCatalogFeedback(`Connector ${id} saved. Test it before autonomous use.`)
-    } catch (error) {
-      notifyError(error, 'Unable to save catalog connector')
-      setCatalogFeedback(error instanceof Error ? error.message : 'Unable to save catalog connector.')
-    } finally { setDataHubBusy(false) }
-  }
-
-  const testCustomConnector = async (id: string) => {
-    setDataHubBusy(true)
-    setCatalogFeedback('')
-    try { setCatalogFeedback((await onTestCatalogConnector(id)).message) }
-    catch (error) {
-      notifyError(error, 'Catalog connector test failed')
-      setCatalogFeedback(error instanceof Error ? error.message : 'Catalog connector test failed.')
-    } finally { setDataHubBusy(false) }
-  }
-
-  const deleteCustomConnector = async (id: string) => {
-    setDataHubBusy(true)
-    try {
-      await onDeleteCatalogConnector(id)
-      setCatalogFeedback(`Connector ${id} and its saved credential were removed.`)
-    } catch (error) { notifyError(error, 'Unable to delete catalog connector') }
-    finally { setDataHubBusy(false) }
   }
 
   const draftAiSettings = (): AiSettings => ({
@@ -424,7 +318,7 @@ export function SettingsModal(props: SettingsModalProps) {
         {menu('workspaces', 'Workspaces', 'Save, switch and recover', <FolderKanban size={17} />)}
         {menu('ai', 'AI connection', 'Model and quality', <Bot size={17} />)}
         {menu('autonomy', 'Autonomy', 'Review and risk policy', <Gauge size={17} />)}
-        {menu('connections', 'Connections', 'Catalog, MCP and API sources', <Database size={17} />)}
+        {menu('connections', 'Game Bridge', 'Local game adapter', <Gamepad2 size={17} />)}
         {menu('updates', 'Updates', 'Signed stable and main builds', <Download size={17} />)}
         {menu('diagnostics', 'Diagnostics', 'Local, private and bounded', <Activity size={17} />)}
         {menu('presets', 'Examples', 'Start empty or explore', <LayoutTemplate size={17} />)}
@@ -466,19 +360,19 @@ export function SettingsModal(props: SettingsModalProps) {
             <div className="settings-section-title"><span><ShieldCheck size={15} /> Risk analysis depth</span><small>Evidence-backed only</small></div>
             <div aria-label="Risk analysis depth" className="autonomy-choice-grid" role="radiogroup">
               <button aria-checked={autonomyPolicy.riskAnalysis === 'standard'} className={autonomyPolicy.riskAnalysis === 'standard' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, riskAnalysis: 'standard' })} role="radio" type="button"><strong>Standard</strong><small>Assess material downstream impacts.</small></button>
-              <button aria-checked={autonomyPolicy.riskAnalysis === 'deep'} className={autonomyPolicy.riskAnalysis === 'deep' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, riskAnalysis: 'deep' })} role="radio" type="button"><strong>Deep</strong><small>Assess every material schema or lineage impact.</small></button>
-              <button aria-checked={autonomyPolicy.riskAnalysis === 'exhaustive'} className={autonomyPolicy.riskAnalysis === 'exhaustive' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, riskAnalysis: 'exhaustive' })} role="radio" type="button"><strong>Exhaustive</strong><small>Classify each affected dataset, feature and model branch.</small></button>
+              <button aria-checked={autonomyPolicy.riskAnalysis === 'deep'} className={autonomyPolicy.riskAnalysis === 'deep' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, riskAnalysis: 'deep' })} role="radio" type="button"><strong>Deep</strong><small>Assess every material mission, server and action impact.</small></button>
+              <button aria-checked={autonomyPolicy.riskAnalysis === 'exhaustive'} className={autonomyPolicy.riskAnalysis === 'exhaustive' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, riskAnalysis: 'exhaustive' })} role="radio" type="button"><strong>Exhaustive</strong><small>Classify each affected player, world and agent branch.</small></button>
             </div>
           </section>
           <section className="settings-section autonomy-settings">
-            <div className="settings-section-title"><span><AlertTriangle size={15} /> Incomplete or conflicting evidence</span><small>Never invent a data incident</small></div>
+            <div className="settings-section-title"><span><AlertTriangle size={15} /> Incomplete or conflicting evidence</span><small>Never invent game state</small></div>
             <div aria-label="Uncertainty policy" className="autonomy-choice-grid" role="radiogroup">
               <button aria-checked={autonomyPolicy.uncertainty === 'review'} className={autonomyPolicy.uncertainty === 'review' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, uncertainty: 'review' })} role="radio" type="button"><strong>Ask a human</strong><small>Pause only the uncertain branch at a checkpoint.</small></button>
               <button aria-checked={autonomyPolicy.uncertainty === 'no-change'} className={autonomyPolicy.uncertainty === 'no-change' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, uncertainty: 'no-change' })} role="radio" type="button"><strong>Report only</strong><small>Record the evidence gap and leave the graph unchanged.</small></button>
-              <button aria-checked={autonomyPolicy.uncertainty === 'bounded'} className={autonomyPolicy.uncertainty === 'bounded' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, uncertainty: 'bounded' })} role="radio" type="button"><strong>Bounded work</strong><small>Allow reversible graph-only work, never dataset claims.</small></button>
+              <button aria-checked={autonomyPolicy.uncertainty === 'bounded'} className={autonomyPolicy.uncertainty === 'bounded' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, uncertainty: 'bounded' })} role="radio" type="button"><strong>Bounded work</strong><small>Allow reversible graph-only work, never unverified game claims.</small></button>
             </div>
           </section>
-          <p className="settings-note">External mutations and DataHub write-back always keep their separate native confirmation, regardless of autonomy level.</p>
+          <p className="settings-note">Game Bridge actions always keep their separate Human Review confirmation, regardless of autonomy level.</p>
         </article>}
 
         {activeSection === 'workspaces' && <article className="settings-page">
@@ -487,7 +381,7 @@ export function SettingsModal(props: SettingsModalProps) {
         </article>}
 
         {activeSection === 'diagnostics' && <article className="settings-page">
-          <div className="settings-page-heading"><small>DIAGNOSTICS</small><h3>Local diagnostic settings</h3><p>Choose how much technical history GAME LAB keeps on this device. Data incidents remain in Reports.</p></div>
+          <div className="settings-page-heading"><small>DIAGNOSTICS</small><h3>Local diagnostic settings</h3><p>Choose how much technical history GAME LAB keeps on this device. Game incidents remain in Reports.</p></div>
           <section className="settings-section diagnostics-settings">
             <div className="diagnostics-privacy"><CheckCircle2 size={18} /><div><strong>Private by design</strong><small>External telemetry is disabled. Tokens, authorization headers and sensitive prompts are always redacted.</small></div></div>
             <div className="diagnostic-settings-grid">
@@ -543,40 +437,8 @@ export function SettingsModal(props: SettingsModalProps) {
         </article>}
 
         {activeSection === 'connections' && <article className="settings-page">
-          <div className="settings-page-heading"><small>CONNECTIONS</small><h3>Game control and evidence sources</h3><p>Connect a local structured game adapter or normalized catalog source without coupling cards to a vendor.</p></div>
+          <div className="settings-page-heading"><small>GAME BRIDGE</small><h3>Local game control</h3><p>Connect GAME LAB to a private game server through the local structured adapter.</p></div>
           <GameBridgePanel />
-          <section className="settings-section">
-            <div className="settings-section-title"><span>Built-in · DataHub</span><small>{mcpTransport === 'demo' ? 'Not configured' : mcpTransport === 'http' ? 'Remote MCP' : 'GraphQL GMS + local MCP'}</small></div>
-            <div className="settings-setting-row"><div className={`settings-icon datahub-${connectionMode}`}><Database size={19} /></div><div><strong>DataHub {connectionMode === 'connected' ? 'connected' : 'not connected'}</strong><p>{mcpMessage}</p></div><ActionButton disabled={dataHubBusy || connectionMode !== 'connected'} onClick={() => void onSyncDataHub()} variant="ghost">Sync now</ActionButton></div>
-            <div className="ai-option-grid">
-              <label className="settings-field"><span>Transport</span><select onChange={(event) => setDataHubTransport(event.target.value as 'http' | 'stdio')} value={dataHubTransport}><option value="stdio">Local stdio (DataHub OSS)</option><option value="http">Streamable HTTP MCP</option></select><small>{dataHubTransport === 'stdio' ? 'Launches mcp-server-datahub locally through uvx; quickstart works without a token.' : 'Connects to an already hosted MCP endpoint.'}</small></label>
-              <label className="settings-field"><span>{dataHubTransport === 'stdio' ? 'DataHub GMS URL' : 'MCP server URL'}</span><input defaultValue={dataHubSettings.url} key={`datahub-url-${dataHubSettings.url}`} placeholder={dataHubTransport === 'stdio' ? 'http://localhost:8080' : 'https://mcp.example.com/mcp'} ref={dataHubUrlRef} type="url" /><small>Only HTTP or HTTPS endpoints are accepted.</small></label>
-              <label className="settings-field"><span>Dataset read route</span><select disabled={dataHubTransport === 'http'} onChange={(event) => setDataHubCatalogReadRoute(event.target.value as 'auto' | 'gms' | 'mcp')} value={dataHubTransport === 'http' ? 'mcp' : dataHubCatalogReadRoute}><option value="auto">Auto · GraphQL for local Docker</option><option value="gms">GraphQL GMS only</option><option value="mcp">MCP tools only</option></select><small>{dataHubTransport === 'http' ? 'Remote Streamable HTTP uses the MCP endpoint.' : 'GraphQL reads catalog batches, schema and lineage directly. MCP remains available for agent tools and governed write-back.'}</small></label>
-            </div>
-            <label className="settings-field"><span>Personal access token <em>optional for local OSS</em></span><input autoComplete="off" placeholder={dataHubSettings.tokenConfigured ? 'Token configured · enter a new value to rotate' : 'Leave empty for an unauthenticated local quickstart'} ref={dataHubTokenRef} type="password" /><small>{dataHubSettings.tokenSource === 'encrypted' ? 'Stored with the operating system secure credential service.' : dataHubSettings.tokenSource === 'environment' ? 'Loaded from the launch environment; never exposed to the renderer.' : dataHubTransport === 'stdio' ? 'Your current quickstart has token authentication disabled, so this field can stay empty.' : dataHubSettings.encryptionAvailable ? 'Hosted endpoints generally require a token; it will be encrypted before SQLite persistence.' : 'Secure credential storage is unavailable; GAME LAB will refuse to save a token.'}</small></label>
-            <label className="datahub-writeback-toggle"><span><strong>Approved DataHub write-back</strong><small>Disabled by default. A local connection uses GraphQL <code>createDocument</code>; remote MCP uses its explicitly advertised mutation. Both require the exact native human confirmation.</small></span><input checked={dataHubWriteback} onChange={(event) => setDataHubWriteback(event.target.checked)} type="checkbox" /></label>
-            <div className="ai-connection-actions"><ActionButton disabled={dataHubBusy || !dataHubSettings.tokenConfigured} onClick={() => void removeDataHubToken()} variant="ghost">Remove saved token</ActionButton><ActionButton disabled={dataHubBusy} icon={<Database size={14} />} onClick={() => void saveAndConnectDataHub()} variant="primary">{dataHubBusy ? 'Connecting…' : 'Save & connect'}</ActionButton></div>
-            {dataHubFeedback && <p aria-live="polite" className="settings-feedback">{dataHubFeedback}</p>}
-          </section>
-          <section className="settings-section">
-            <div className="settings-section-title"><span>Custom catalog.v1 connections</span><small>{catalogConnectors.filter((connector) => !connector.builtIn).length} configured</small></div>
-            <p className="settings-feedback">A connector stays outside the graph. It must expose normalized <code>catalog_search</code>/<code>catalog_inspect</code> MCP tools or the HTTP endpoints <code>/catalog/search</code> and <code>/catalog/assets</code>.</p>
-            <div className="model-grid provider-grid">
-              {catalogConnectors.filter((connector) => !connector.builtIn).map((connector) => <div className="catalog-connector-card" key={connector.id}>
-                <span><strong>{connector.name}</strong><small>{connector.kind} · {connector.id}</small><code>{connector.enabled ? 'enabled' : 'disabled'} · {connector.tokenConfigured ? 'secure token' : 'no token'}</code></span>
-                <div className="ai-connection-actions"><ActionButton disabled={dataHubBusy} onClick={() => void testCustomConnector(connector.id)} variant="ghost">Test</ActionButton><ActionButton disabled={dataHubBusy} icon={<Trash2 size={13} />} onClick={() => void deleteCustomConnector(connector.id)} variant="ghost">Remove</ActionButton></div>
-              </div>)}
-            </div>
-            <div className="ai-option-grid">
-              <label className="settings-field"><span>Connector ID</span><input placeholder="snowflake-catalog" ref={catalogIdRef} type="text" /><small>Stable lowercase ID used as neutral card provenance.</small></label>
-              <label className="settings-field"><span>Display name</span><input placeholder="Snowflake Catalog" ref={catalogNameRef} type="text" /></label>
-              <label className="settings-field"><span>Protocol</span><select onChange={(event) => setCatalogKind(event.target.value as CatalogConnectorKind)} value={catalogKind}><option value="mcp">MCP · Streamable HTTP</option><option value="http-api">HTTP API · catalog.v1</option></select></label>
-              <label className="settings-field"><span>Endpoint</span><input placeholder={catalogKind === 'mcp' ? 'https://catalog.example.com/mcp' : 'https://catalog.example.com'} ref={catalogUrlRef} type="url" /><small>HTTPS required; HTTP is accepted only on loopback.</small></label>
-            </div>
-            <label className="settings-field"><span>Bearer token <em>optional</em></span><input autoComplete="off" placeholder="Stored in the operating system credential service" ref={catalogTokenRef} type="password" /><small>Never included in a card, manifest export or renderer response.</small></label>
-            <div className="ai-connection-actions"><ActionButton disabled={dataHubBusy} icon={<Database size={14} />} onClick={() => void saveCustomConnector()} variant="primary">Add connection</ActionButton></div>
-            {catalogFeedback && <p aria-live="polite" className="settings-feedback">{catalogFeedback}</p>}
-          </section>
         </article>}
 
         {activeSection === 'updates' && <article className="settings-page">

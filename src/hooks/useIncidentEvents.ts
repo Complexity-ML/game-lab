@@ -6,20 +6,20 @@ export function useIncidentEvents(activeWorkspaceId?: string | null) {
 
   useEffect(() => {
     let current = true
-    if (!activeWorkspaceId || !window.dataLab?.listIncidentEvents) {
+    if (!activeWorkspaceId || !window.gameLab?.listIncidentEvents) {
       setEvents([])
       return () => { current = false }
     }
     setEvents([])
-    void window.dataLab.listIncidentEvents()
+    void window.gameLab.listIncidentEvents()
       .then((next) => { if (current) setEvents(next) })
       .catch(() => undefined)
     return () => { current = false }
   }, [activeWorkspaceId])
 
   const record = useCallback(async (event: IncidentEventInput) => {
-    if (!activeWorkspaceId || !window.dataLab?.recordIncidentEvent) return
-    const result = await window.dataLab.recordIncidentEvent(event).catch(() => ({ recorded: false as const }))
+    if (!activeWorkspaceId || !window.gameLab?.recordIncidentEvent) return
+    const result = await window.gameLab.recordIncidentEvent(event).catch(() => ({ recorded: false as const }))
     if (result.recorded && result.event) setEvents((current) => [result.event!, ...current.filter((candidate) => candidate.id !== result.event!.id)].slice(0, 200))
   }, [activeWorkspaceId])
 

@@ -6,10 +6,8 @@ interface ProposalReviewModalProps {
   assistant?: import('./ReviewPanel').ReviewAssistantProps
   applying?: boolean
   proposal: AgentProposal
-  relatedAssets: string[]
   revisionId?: string
-  writebackAvailable: boolean
-  onApply(writebackRequested: boolean): void
+  onApply(): void
   onClose(): void
   onDiscard(): void
 }

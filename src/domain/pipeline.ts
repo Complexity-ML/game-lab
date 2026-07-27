@@ -1,17 +1,15 @@
 import type { Edge, Node } from '@xyflow/react'
-import type { DataHubEvidence } from './datahub'
+import type { GameActionCommand } from './game-bridge'
+import type { GameEvidence } from './game-evidence'
 import { scenarioPresets } from './presets'
 import { defaultRiskAssessmentRule } from './risk-assessment'
-import { defaultQueryCheckRule } from './query-check'
-import { workerPolicyRule, defaultWorkerPolicy } from './worker-policy'
-import type { DataValueRiskSignal, LineageAssetSummary } from './catalog-connectors'
-import type { GameActionCommand } from './game-bridge'
+import { defaultWorkerPolicy, workerPolicyRule } from './worker-policy'
 
 export type CardKind = 'control' | 'explorer' | 'worker' | 'query' | 'server' | 'agent' | 'source' | 'profile' | 'analysis' | 'impact' | 'risk' | 'patch' | 'monitor' | 'parallel' | 'diagram' | 'split' | 'decision' | 'transform' | 'review' | 'validation' | 'output'
 export type PipelineStatus = 'healthy' | 'warning' | 'blocked' | 'draft'
 
 export interface GameServerTelemetry {
-  platform: 'FiveM' | 'RedM' | 'Generic'
+  platform: 'Minecraft' | 'FiveM' | 'RedM' | 'Generic'
   state: 'online' | 'degraded' | 'offline' | 'maintenance'
   endpoint: string
   playersOnline: number
@@ -38,114 +36,6 @@ export interface SchemaField {
   tags?: string[]
 }
 
-export interface DataProfileField extends SchemaField {
-  nullRate?: number
-  distinctCount?: number
-}
-
-export interface DataProfileStorageProof {
-  kind: 'bounded-metadata'
-  version: 1
-  rawRowsStored: false
-  hostVerified: boolean
-}
-
-export interface DatasetAggregateAudit {
-  kind: 'bounded-aggregate-profile'
-  version: 1
-  status: 'complete' | 'coverage_gap' | 'unavailable'
-  capturedAt: string
-  previousCapturedAt?: string
-  rowCount?: number
-  previousRowCount?: number
-  profiledFieldCount: number
-  riskSignals: DataValueRiskSignal[]
-  rawRowsRead: false
-  hostVerified: boolean
-}
-
-export interface DataProfileSnapshot {
-  sourceUrn: string
-  capturedAt: string
-  expiresAt: string
-  stale: boolean
-  platform: string
-  environment: string
-  quality: 'healthy' | 'failing' | 'unavailable'
-  fieldCount: number
-  profiledFields: DataProfileField[]
-  sensitiveFieldCount: number
-  upstreamCount: number
-  downstreamCount: number
-  anomalies: string[]
-  aggregateAudit: DatasetAggregateAudit
-  tokenEstimate: number
-  storage: DataProfileStorageProof
-}
-
-export interface CatalogExplorationProgress {
-  query: string
-  total: number
-  discovered: number
-  inspected: number
-  /** Datasets whose aggregate value profile was actually read. */
-  dataAudited?: number
-  /** Datasets checked successfully but lacking an aggregate value profile. */
-  dataAuditCoverageGaps?: number
-  /** Datasets that still need their aggregate audit attempt or a bounded retry. */
-  dataAuditRemaining?: number
-  failed: number
-  incidents: number
-  governanceGaps: number
-  concurrency: number
-  batchSize?: number
-  batchDurationMs?: number
-  batchFailed?: number
-  batchProcessed?: number
-  batchCached?: number
-  connectorRecoveryStreak?: number
-  connectorRetryCount?: number
-  connectorRetryLimit?: number
-  connectorFailureFingerprint?: string
-  nextRetryAt?: string
-  remaining?: number
-  mode?: 'dataset' | 'catalog'
-  cacheMode?: 'prefer' | 'refresh'
-  phase?: 'discover' | 'inspect' | 'checkpoint'
-  state: 'idle' | 'discovering' | 'inspecting' | 'complete' | 'paused' | 'failed'
-  pauseReason?: 'cancelled' | 'connector_unavailable' | 'retry_exhausted'
-  checkpointAt: string
-  datasets: CatalogDatasetCheckpoint[]
-}
-
-export interface CatalogDatasetCheckpoint {
-  urn: string
-  name: string
-  status: 'healthy' | 'warning' | 'unavailable'
-  fieldCount: number
-  sensitiveSignalCount?: number
-  qualityStatus?: 'healthy' | 'failing' | 'unavailable'
-  dataProfileStatus?: 'available' | 'unavailable' | 'error'
-  /**
-   * Host-owned proof that this dataset passed through the aggregate data-audit
-   * stage. Legacy checkpoints intentionally omit it and are audited once.
-   */
-  dataAuditStatus?: 'complete' | 'coverage_gap' | 'unavailable'
-  dataAuditedAt?: string
-  dataRiskSignals?: DataValueRiskSignal[]
-  ownerCount: number
-  upstreamCount: number
-  downstreamCount: number
-  downstreamMlCount?: number
-  downstreamMlRefs?: { urn: string; name: string; kind: 'feature' | 'model' | 'deployment' }[]
-  issues: string[]
-  fingerprint: string
-  capturedAt: string
-  expiresAt: string
-  attemptCount?: number
-  lastAttemptAt?: string
-}
-
 export interface PipelineNodeData extends Record<string, unknown> {
   kind: CardKind
   label: string
@@ -153,26 +43,13 @@ export interface PipelineNodeData extends Record<string, unknown> {
   owner: string
   status: PipelineStatus
   schema: SchemaField[]
-  connectorId?: string
-  sourceSystem?: string
-  assetRef?: string
-  datahubUrn?: string
-  datahubPlatform?: string
-  datahubEnvironment?: string
-  datahubDomain?: string
-  datahubTags?: string[]
-  datahubQuality?: 'healthy' | 'failing' | 'unavailable'
-  datahubFreshness?: { capturedAt: string; expiresAt: string; stale: boolean }
-  datahubUpstream?: LineageAssetSummary[]
-  datahubDownstream?: LineageAssetSummary[]
-  profile?: DataProfileSnapshot
-  exploration?: CatalogExplorationProgress
+  evidenceRef?: string
   patchScope?: 'graph-only'
   monitorMode?: 'event-loop'
   parallelMode?: 'branch-fanout'
   diagramMode?: 'incident-workstream'
   controlMode?: 'autonomous-player'
-  explorerMode?: 'catalog-fanout'
+  explorerMode?: 'world-scan'
   workerMode?: 'bounded-execution'
   serverTelemetry?: GameServerTelemetry
   agentTelemetry?: GameAgentTelemetry
@@ -181,11 +58,6 @@ export interface PipelineNodeData extends Record<string, unknown> {
   pinned?: boolean
   runState?: 'idle' | 'running' | 'completed' | 'waiting' | 'failed' | 'stopped'
   runSequence?: number
-  /**
-   * Host-owned execution checkpoint. It fingerprints the card contract and
-   * every non-feedback predecessor so unchanged cards are not replayed while
-   * edited cards and their descendants are invalidated automatically.
-   */
   runFingerprint?: string
 }
 
@@ -210,8 +82,8 @@ export interface AgentProposal {
   addedEdges: Edge[]
   removedEdgeIds: string[]
   gameActions?: Array<GameActionCommand & { agentNodeId: string; reason: string }>
-  datahubReads: string[]
-  evidence?: DataHubEvidence[]
+  evidenceReads: string[]
+  evidence?: GameEvidence[]
   writeback: string
   requiresHumanReview?: boolean
   confidence?: number
@@ -227,12 +99,12 @@ export const cardLabels: Record<CardKind, string> = {
   query: 'Telemetry Query',
   server: 'Game Server',
   agent: 'Game Agent',
-  source: 'Evidence Source',
+  source: 'Game Evidence',
   profile: 'Telemetry Snapshot',
   analysis: 'Game Analysis',
   impact: 'Player Impact',
   risk: 'Operational Risk',
-  patch: 'Server Patch',
+  patch: 'Server Action',
   monitor: 'Live Monitor',
   parallel: 'Parallel Agents',
   diagram: 'Incident Diagram',
@@ -244,146 +116,14 @@ export const cardLabels: Record<CardKind, string> = {
   output: 'Game Result',
 }
 
-export const customerActivationNodes: PipelineNode[] = [
-  {
-    id: 'customers-source',
-    type: 'pipeline',
-    position: { x: 30, y: 190 },
-    data: {
-      kind: 'source',
-      label: 'Customers 360',
-      description: 'Curated customer table from Snowflake',
-      owner: 'Growth Data',
-      status: 'healthy',
-      datahubUrn: 'urn:li:dataset:(urn:li:dataPlatform:snowflake,b2fd91.order_entry_db.order_entry.customers,PROD)',
-      schema: [
-        { name: 'customer_id', type: 'string' },
-        { name: 'email', type: 'string', tags: ['PII'] },
-        { name: 'country', type: 'string' },
-        { name: 'lifetime_value', type: 'number' },
-      ],
-    },
-  },
-  {
-    id: 'schema-analysis',
-    type: 'pipeline',
-    position: { x: 340, y: 190 },
-    data: {
-      kind: 'analysis',
-      label: 'Analyze data context',
-      description: 'Reads schema, tags, quality and downstream lineage from DataHub',
-      owner: 'GAME LAB Agent',
-      status: 'healthy',
-      schema: [],
-      rule: 'schema + tags + ownership + quality + lineage',
-    },
-  },
-  {
-    id: 'region-split',
-    type: 'pipeline',
-    position: { x: 650, y: 190 },
-    data: {
-      kind: 'split',
-      label: 'Route by consent',
-      description: 'Separates activation-ready rows from quarantine',
-      owner: 'Growth Data',
-      status: 'healthy',
-      schema: [],
-      rule: 'marketing_consent = true',
-    },
-  },
-  {
-    id: 'normalize-customer',
-    type: 'pipeline',
-    position: { x: 960, y: 70 },
-    data: {
-      kind: 'transform',
-      label: 'Normalize profile',
-      description: 'Normalizes country codes and customer identifiers',
-      owner: 'Analytics Engineering',
-      status: 'warning',
-      schema: [],
-      rule: 'upper(country), trim(customer_id)',
-    },
-  },
-  {
-    id: 'agent-decision',
-    type: 'pipeline',
-    position: { x: 1270, y: 70 },
-    data: {
-      kind: 'decision',
-      label: 'Agent decision',
-      description: 'The agent chooses a correction or requests human review from the analysis findings',
-      owner: 'GAME LAB Agent',
-      status: 'draft',
-      schema: [],
-      rule: 'Awaiting an agent correction plan',
-    },
-  },
-  {
-    id: 'consent-validation',
-    type: 'pipeline',
-    position: { x: 1580, y: 70 },
-    data: {
-      kind: 'validation',
-      label: 'Governance gate',
-      description: 'Validates consent and PII handling rules',
-      owner: 'Data Governance',
-      status: 'warning',
-      schema: [],
-      rule: 'PII fields must be masked before activation',
-    },
-  },
-  {
-    id: 'activation-output',
-    type: 'pipeline',
-    position: { x: 1890, y: 70 },
-    data: {
-      kind: 'output',
-      label: 'CRM activation',
-      description: 'Audience sync consumed by the CRM platform',
-      owner: 'Lifecycle Marketing',
-      status: 'blocked',
-      datahubUrn: 'urn:li:dataset:(urn:li:dataPlatform:snowflake,activation.crm_customers,PROD)',
-      schema: [],
-    },
-  },
-  {
-    id: 'quarantine-output',
-    type: 'pipeline',
-    position: { x: 960, y: 330 },
-    data: {
-      kind: 'output',
-      label: 'Consent quarantine',
-      description: 'Rows held for data steward review',
-      owner: 'Data Governance',
-      status: 'healthy',
-      datahubUrn: 'urn:li:dataset:(urn:li:dataPlatform:snowflake,governance.consent_quarantine,PROD)',
-      schema: [],
-    },
-  },
-]
-
-export const customerActivationEdges: Edge[] = [
-  { id: 'e-source-analysis', source: 'customers-source', target: 'schema-analysis', type: 'elastic' },
-  { id: 'e-analysis-split', source: 'schema-analysis', target: 'region-split', type: 'elastic' },
-  { id: 'e-split-normalize', source: 'region-split', target: 'normalize-customer', sourceHandle: 'approved', type: 'elastic', label: 'approved' },
-  { id: 'e-split-quarantine', source: 'region-split', target: 'quarantine-output', sourceHandle: 'quarantine', type: 'elastic', label: 'quarantine' },
-  { id: 'e-normalize-decision', source: 'normalize-customer', target: 'agent-decision', type: 'elastic' },
-  { id: 'e-decision-validation', source: 'agent-decision', target: 'consent-validation', type: 'elastic' },
-  { id: 'e-validation-output', source: 'consent-validation', target: 'activation-output', type: 'elastic' },
-]
-
 export const initialNodes: PipelineNode[] = []
 export const initialEdges: Edge[] = []
 
-export type PipelinePresetId = 'empty' | 'server-ops' | 'agent-arena' | 'customer-activation' | 'pii-masking' | 'schema-drift' | 'broken-governance' | 'license-reclamation' | 'compliance-exposure' | 'renewal-optimization'
+export type PipelinePresetId = 'empty' | 'server-ops' | 'agent-arena'
 
 export function loadPipelinePreset(preset: PipelinePresetId): { title: string; nodes: PipelineNode[]; edges: Edge[] } {
   if (preset === 'empty') return { title: 'Untitled pipeline', nodes: [], edges: [] }
-  const selected = preset === 'customer-activation'
-    ? { title: 'Customer activation', nodes: customerActivationNodes, edges: customerActivationEdges }
-    : scenarioPresets[preset]
+  const selected = scenarioPresets[preset]
   return {
     title: selected.title,
     nodes: selected.nodes.map((node) => ({
@@ -416,19 +156,10 @@ const hostStarterKinds = new Set<CardKind>(['control', 'explorer', 'worker'])
 const floatingEvidenceKinds = new Set<CardKind>(['source', 'profile'])
 
 function orphanIdentity(node: PipelineNode) {
-  // DataHub URNs and provider labels are not consistently cased. Treat a
-  // casing-only variation as the same visual card so agent repairs cannot
-  // leave duplicate profile sidecars on one canvas.
-  const asset = (node.data.assetRef ?? node.data.datahubUrn)?.trim().toLowerCase()
-  return asset ? `${node.data.kind}:${asset}` : `${node.data.kind}:${node.data.label.trim().toLowerCase()}`
+  const evidenceRef = node.data.evidenceRef?.trim().toLowerCase()
+  return evidenceRef ? `${node.data.kind}:${evidenceRef}` : `${node.data.kind}:${node.data.label.trim().toLowerCase()}`
 }
 
-/**
- * Host starters and bounded Source/Profile evidence may float between
- * incremental iterations. A disconnected evidence card becomes
- * reconstruction debris only when it duplicates a connected card identity or
- * occupies the same canvas slot as one.
- */
 export function pruneOrphanedCards(nodes: PipelineNode[], edges: Edge[], strictNodeIds: Iterable<string> = []): PipelineNode[] {
   const nodeIds = new Set(nodes.map((node) => node.id))
   const validEdges = edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
@@ -443,25 +174,13 @@ export function pruneOrphanedCards(nodes: PipelineNode[], edges: Edge[], strictN
   ))
   return nodes.filter((node) => {
     if (hostStarterKinds.has(node.data.kind) || connected.has(node.id)) return true
-    // A disconnected copy of an already connected card is always visual
-    // debris, including profile memories left behind by an agent repair.
     if (connectedIdentities.has(orphanIdentity(node))) return false
-    // Persisted repair diffs can retain an older profile at the exact XY slot
-    // later assigned to its replacement. Although hidden under the visible
-    // card, React Flow still routes elastic edges around that stale obstacle.
     if (floatingEvidenceKinds.has(node.data.kind) && overlapsConnectedCard(node)) return false
     if (floatingEvidenceKinds.has(node.data.kind)) return true
-    // Every card created by the current transaction must join a branch.
-    if (strict.has(node.id)) return false
-    return true
+    return !strict.has(node.id)
   })
 }
 
-/**
- * Normalizes a persisted or proposed graph as one atomic unit. Removing the
- * orphan cards and their dangling edges together keeps React Flow obstacle
- * routing aligned with the cards that are actually visible.
- */
 export function prunePipelineGraph(nodes: PipelineNode[], edges: Edge[], strictNodeIds: Iterable<string> = []): { nodes: PipelineNode[]; edges: Edge[] } {
   const prunedNodes = pruneOrphanedCards(nodes, edges, strictNodeIds)
   const keptNodeIds = new Set(prunedNodes.map((node) => node.id))
@@ -484,50 +203,50 @@ export function newCard(kind: CardKind, index: number): PipelineNode {
         ? 'Connect a private game server and expose bounded operational telemetry.'
         : kind === 'agent'
           ? 'Configure an AI-controlled NPC or test player for a private server.'
-          : 'Configure this card in the inspector.',
+          : 'Configure this game card in the inspector.',
       owner: 'Unassigned',
       status: 'draft',
       schema: [],
       rule: kind === 'split'
         ? 'condition = true'
         : kind === 'impact'
-          ? 'scope(change) → DataHub lineage → ranked risks → recommended actions'
+          ? 'scope=mission | rank=players,world,server | action=review'
           : kind === 'risk'
             ? defaultRiskAssessmentRule
-          : kind === 'patch'
-            ? 'graph_only: map incompatible fields without mutating the source dataset'
-            : kind === 'monitor'
-              ? 'on_change(metadata_fingerprint) | cooldown=60s | max_iterations=10 | alert=severity_increase'
-              : kind === 'parallel'
-                ? 'max_concurrency=3 | context=branch_only | merge=atomic'
-                : kind === 'diagram'
-                  ? 'group=incident | inputs=parallel_diffs | merge=atomic'
-                  : kind === 'control'
-                    ? 'objective=maintain governed graph | mode=autonomous | on_review=checkpoint_and_resume | on_idle=monitor'
-                    : kind === 'explorer'
-                      ? 'scope=all_datasets | batch_size=8 | audit_concurrency=4 | cache=prefer | checkpoint=versioned | resume=true'
-                      : kind === 'worker'
-                        ? workerPolicyRule(defaultWorkerPolicy)
-                        : kind === 'query'
-                          ? defaultQueryCheckRule
-                          : kind === 'server'
-                            ? 'transport=read_only | scope=private_server | health=required | commands=reviewed'
-                            : kind === 'agent'
-                              ? 'environment=private_server | observe=telemetry | act=allowlist | emergency_stop=required'
-            : undefined,
+            : kind === 'patch'
+              ? 'graph_only: action=allowlisted | rollback=required'
+              : kind === 'monitor'
+                ? 'on_change=game_checkpoint | cooldown=60s | max_iterations=10'
+                : kind === 'parallel'
+                  ? 'max_concurrency=3 | context=branch_only | merge=atomic'
+                  : kind === 'diagram'
+                    ? 'group=incident | inputs=parallel_diffs | merge=atomic'
+                    : kind === 'control'
+                      ? 'objective=play safely | mode=autonomous | on_review=checkpoint_and_resume'
+                      : kind === 'explorer'
+                        ? 'scope=nearby_world | checkpoint=versioned | resume=true'
+                        : kind === 'worker'
+                          ? workerPolicyRule(defaultWorkerPolicy)
+                          : kind === 'query'
+                            ? 'source=game_bridge | operation=observation.read | mode=read_only'
+                            : kind === 'server'
+                              ? 'transport=read_only | scope=private_server | health=required | commands=reviewed'
+                              : kind === 'agent'
+                                ? 'environment=private_server | observe=telemetry | act=allowlist | emergency_stop=required'
+                                : undefined,
       patchScope: kind === 'patch' ? 'graph-only' : undefined,
       monitorMode: kind === 'monitor' ? 'event-loop' : undefined,
       parallelMode: kind === 'parallel' ? 'branch-fanout' : undefined,
       diagramMode: kind === 'diagram' ? 'incident-workstream' : undefined,
       controlMode: kind === 'control' ? 'autonomous-player' : undefined,
-      explorerMode: kind === 'explorer' ? 'catalog-fanout' : undefined,
+      explorerMode: kind === 'explorer' ? 'world-scan' : undefined,
       workerMode: kind === 'worker' ? 'bounded-execution' : undefined,
       serverTelemetry: kind === 'server' ? {
-        platform: 'FiveM',
+        platform: 'Minecraft',
         state: 'maintenance',
-        endpoint: '127.0.0.1:30120',
+        endpoint: '127.0.0.1:25565',
         playersOnline: 0,
-        playerCapacity: 48,
+        playerCapacity: 8,
         latencyMs: 0,
         cpuPercent: 0,
         memoryMb: 0,
@@ -537,7 +256,7 @@ export function newCard(kind: CardKind, index: number): PipelineNode {
       agentTelemetry: kind === 'agent' ? {
         mode: 'test-player',
         state: 'idle',
-        objective: 'Validate one bounded gameplay scenario',
+        objective: 'Complete one bounded Minecraft mission',
         safetyMode: 'private-server-only',
         confidence: 0,
       } : undefined,

@@ -47,7 +47,7 @@ export function CardLibraryView({ onAddCard, onClose }: { onAddCard(kind: CardKi
         title={`Click to add or drag ${cardLabels[kind]} onto the canvas`}
         type="button"
       ><span><Icon size={16} /></span><div><strong>{cardLabels[kind]}</strong><small>{description}</small></div><Plus size={14} /></button>)}</div>
-      <section className="datahub-context">
+      <section className="game-safety-context">
         <div><Gamepad2 size={15} /><strong>Private-server safety</strong></div>
         <p>GAME LAB operates on owned or authorized private servers. Commands stay allowlisted, versioned and behind Human Review.</p>
         <ul><li>server telemetry</li><li>replay evidence</li><li>emergency stop</li></ul>

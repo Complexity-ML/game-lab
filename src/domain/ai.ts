@@ -123,15 +123,15 @@ function nodePatch(action: AiAction, current?: PipelineNodeData): Partial<Pipeli
   if (effectiveKind === 'parallel') patch.parallelMode = 'branch-fanout'
   if (effectiveKind === 'diagram') patch.diagramMode = 'incident-workstream'
   if (effectiveKind === 'control') patch.controlMode = 'autonomous-player'
-  if (effectiveKind === 'explorer') patch.explorerMode = 'catalog-fanout'
+  if (effectiveKind === 'explorer') patch.explorerMode = 'world-scan'
   if (effectiveKind === 'worker') patch.workerMode = 'bounded-execution'
   if (text(action.label)) patch.label = text(action.label, '', 120)
   if (text(action.description)) patch.description = text(action.description, '', 500)
   if (text(action.owner)) patch.owner = text(action.owner, '', 120)
   if (effectiveKind === 'monitor') patch.rule = completeMonitorRule(action.rule, current?.kind === 'monitor' ? current.rule : undefined)
-  else if (effectiveKind === 'explorer') patch.rule = text(action.rule, current?.kind === 'explorer' ? current.rule : 'scope=all_datasets | batch_size=8 | audit_concurrency=4 | cache=prefer | checkpoint=versioned | resume=true', 2_000)
+  else if (effectiveKind === 'explorer') patch.rule = text(action.rule, current?.kind === 'explorer' ? current.rule : 'scope=nearby_world | checkpoint=versioned | resume=true', 2_000)
   else if (effectiveKind === 'worker') patch.rule = text(action.rule, current?.kind === 'worker' ? current.rule : 'role=generic | batch_size=4 | max_concurrency=4 | retry=checkpoint | context=branch_only | merge=atomic', 2_000)
-  else if (effectiveKind === 'query') patch.rule = text(action.rule, current?.kind === 'query' ? current.rule : 'connector=datahub | protocol=graphql | registry=connector_manifest | operation=profile.read | mode=read_only | variables=host_validated | timeout_ms=8000 | review=not_required | dry_run=not_applicable | rollback=not_applicable | response=bounded_aggregate_profile', 2_000)
+  else if (effectiveKind === 'query') patch.rule = text(action.rule, current?.kind === 'query' ? current.rule : 'source=game_bridge | operation=observation.read | mode=read_only | timeout_ms=8000', 2_000)
   else if (text(action.rule)) patch.rule = text(action.rule, '', 2_000)
   return patch
 }
@@ -171,11 +171,11 @@ export function materializeAiProposal(response: AiProposalResponse, nodes: Pipel
         rule: action.kind === 'monitor'
           ? completeMonitorRule(action.rule)
           : action.kind === 'explorer'
-            ? text(action.rule, 'scope=all_datasets | batch_size=8 | audit_concurrency=4 | cache=prefer | checkpoint=versioned | resume=true', 2_000)
+            ? text(action.rule, 'scope=nearby_world | checkpoint=versioned | resume=true', 2_000)
             : action.kind === 'worker'
               ? text(action.rule, 'role=generic | batch_size=4 | max_concurrency=4 | retry=checkpoint | context=branch_only | merge=atomic', 2_000)
               : action.kind === 'query'
-                ? text(action.rule, 'connector=datahub | protocol=graphql | registry=connector_manifest | operation=profile.read | mode=read_only | variables=host_validated | timeout_ms=8000 | review=not_required | dry_run=not_applicable | rollback=not_applicable | response=bounded_aggregate_profile', 2_000)
+                ? text(action.rule, 'source=game_bridge | operation=observation.read | mode=read_only | timeout_ms=8000', 2_000)
             : text(action.rule, undefined, 2_000) || undefined,
         status: 'draft',
         schema: [],
@@ -185,7 +185,7 @@ export function materializeAiProposal(response: AiProposalResponse, nodes: Pipel
         parallelMode: action.kind === 'parallel' ? 'branch-fanout' : undefined,
         diagramMode: action.kind === 'diagram' ? 'incident-workstream' : undefined,
         controlMode: action.kind === 'control' ? 'autonomous-player' : undefined,
-        explorerMode: action.kind === 'explorer' ? 'catalog-fanout' : undefined,
+        explorerMode: action.kind === 'explorer' ? 'world-scan' : undefined,
         workerMode: action.kind === 'worker' ? 'bounded-execution' : undefined,
       },
     })
@@ -264,8 +264,8 @@ export function materializeAiProposal(response: AiProposalResponse, nodes: Pipel
     requiresHumanReview: Boolean(contract.requires_human_review),
     confidence: typeof contract.confidence === 'number' ? Math.max(0, Math.min(1, contract.confidence)) : undefined,
     model: response.model,
-    datahubReads: Array.isArray(contract.evidence) ? contract.evidence.map((item) => text(item, '', 500)).filter(Boolean).slice(0, 12) : [],
-    writeback: text(contract.writeback, 'Record the approved decision and lineage in DataHub.', 800),
+    evidenceReads: Array.isArray(contract.evidence) ? contract.evidence.map((item) => text(item, '', 500)).filter(Boolean).slice(0, 12) : [],
+    writeback: text(contract.writeback, 'Record the approved game decision and execution receipt locally.', 800),
     toolTrace: response.toolTrace?.slice(0, 96),
     addedNodes,
     updatedNodes,
@@ -276,48 +276,24 @@ export function materializeAiProposal(response: AiProposalResponse, nodes: Pipel
 }
 
 export function compactGraph(nodes: PipelineNode[], edges: Edge[]) {
-  const freshProfileByUrn = new Map(nodes.flatMap((node) => {
-    const profile = node.data.profile
-    const expiresAt = profile ? Date.parse(profile.expiresAt) : Number.NaN
-    return node.data.kind === 'profile' && profile && !profile.stale && Number.isFinite(expiresAt) && expiresAt > Date.now()
-      ? [[profile.sourceUrn, node.id] as const]
-      : []
-  }))
   return {
-    nodes: nodes.map((node) => {
-      const profileRef = node.data.kind === 'source' && node.data.datahubUrn ? freshProfileByUrn.get(node.data.datahubUrn) : undefined
-      return {
-        id: node.id,
-        kind: node.data.kind,
-        label: node.data.label,
-        description: node.data.description,
-        owner: node.data.owner,
-        rule: node.data.rule,
-        datahubUrn: node.data.datahubUrn,
-        schema: node.data.kind === 'profile' || profileRef ? [] : node.data.schema,
-        profileRef,
-        profile: node.data.profile ? {
-          sourceUrn: node.data.profile.sourceUrn,
-          capturedAt: node.data.profile.capturedAt,
-          expiresAt: node.data.profile.expiresAt,
-          stale: node.data.profile.stale,
-          quality: node.data.profile.quality,
-          fieldCount: node.data.profile.fieldCount,
-          profiledFields: node.data.profile.profiledFields,
-          sensitiveFieldCount: node.data.profile.sensitiveFieldCount,
-          upstreamCount: node.data.profile.upstreamCount,
-          downstreamCount: node.data.profile.downstreamCount,
-          anomalies: node.data.profile.anomalies,
-          tokenEstimate: node.data.profile.tokenEstimate,
-          storage: node.data.profile.storage,
-        } : undefined,
-        execution: node.data.runState ? {
-          state: node.data.runState,
-          sequence: node.data.runSequence,
-          checkpoint: node.data.runFingerprint,
-        } : undefined,
-      }
-    }),
+    nodes: nodes.map((node) => ({
+      id: node.id,
+      kind: node.data.kind,
+      label: node.data.label,
+      description: node.data.description,
+      owner: node.data.owner,
+      rule: node.data.rule,
+      evidenceRef: node.data.evidenceRef,
+      schema: node.data.schema,
+      serverTelemetry: node.data.serverTelemetry,
+      agentTelemetry: node.data.agentTelemetry,
+      execution: node.data.runState ? {
+        state: node.data.runState,
+        sequence: node.data.runSequence,
+        checkpoint: node.data.runFingerprint,
+      } : undefined,
+    })),
     edges: edges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle })),
   }
 }

@@ -38,8 +38,10 @@ describe('Electron renderer trust boundary', () => {
     expect(html).toContain("frame-ancestors 'none'")
   })
 
-  it('requires a second native confirmation for the only allowed mutation', () => {
-    expect(main).toContain("message: 'Publish this approved Decision to DataHub?'")
-    expect(main).toContain("if (confirmation.response !== 0) throw new Error('DataHub write-back cancelled before any external mutation')")
+  it('exposes Game Bridge actions and emergency stop through separate fixed channels', () => {
+    expect(main).toContain("const gameBridgeActionChannel = 'game-lab:game-bridge-action'")
+    expect(main).toContain("const gameBridgeStopChannel = 'game-lab:game-bridge-stop'")
+    expect(preload).toContain('executeGameAction: (payload: unknown) => ipcRenderer.invoke(gameBridgeActionChannel, payload)')
+    expect(preload).toContain('emergencyStopGameBridge: () => ipcRenderer.invoke(gameBridgeStopChannel)')
   })
 })

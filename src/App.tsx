@@ -21,7 +21,6 @@ import { useAppUpdates } from './hooks/useAppUpdates'
 import { useAtomicReviewResolver } from './hooks/useAtomicReviewResolver'
 import { useAutonomousPlayer } from './hooks/useAutonomousPlayer'
 import { useAutonomyPolicy } from './hooks/useAutonomyPolicy'
-import { useDataHubConnection } from './hooks/useDataHubConnection'
 import { useDiagnosticsActions } from './hooks/useDiagnosticsActions'
 import { useGraphHistory } from './hooks/useGraphHistory'
 import { useIncidentEvents } from './hooks/useIncidentEvents'
@@ -45,7 +44,7 @@ const SettingsModal = lazy(() => import('./components/shared/SettingsModal').the
 
 export default function App() {
   const { language } = useLanguage()
-  const platformClass = window.dataLab?.platform ? `platform-${window.dataLab.platform}` : 'platform-web'
+  const platformClass = window.gameLab?.platform ? `platform-${window.gameLab.platform}` : 'platform-web'
   const [nodes, setNodes, onNodesChange] = useNodesState<PipelineNode>(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [selectedId, setSelectedId] = useState('')
@@ -77,7 +76,6 @@ export default function App() {
 
   const appUpdates = useAppUpdates(setActivity)
   const ai = useAiConnections(setActivity)
-  const dataHub = useDataHubConnection(setActivity)
   const pipelineVersions = usePipelineVersions({
     edges,
     nodes,
@@ -118,7 +116,6 @@ export default function App() {
   const pipeline = usePipelineInteractions({
     edges,
     inspectorOpen,
-    invalidateDataHubContext: dataHub.invalidateContext,
     libraryOpen,
     nodes,
     persistImportedWorkspace: workspace.persistImportedWorkspace,
@@ -157,28 +154,23 @@ export default function App() {
     autonomyPolicy,
     commitAutonomousProposal: pipelineVersions.commitAutonomousProposal,
     discardInvalidProposal: pipelineVersions.discardInvalidProposal,
-    connectionMode: dataHub.catalogConnectionMode,
     edges,
     fitCommittedGraph: pipeline.fitCommittedGraph,
     incidentSummaries: incidents.summaries,
-    inspectDataHubAsset: dataHub.inspectAsset,
-    inspectorOpen,
     issues,
     language,
-    libraryOpen,
     logIncident: incidents.record,
     nodes,
     pendingVersionId: pipelineVersions.pendingVersionId,
     projectTitle,
     proposal,
-    recordAudit: dataHub.recordAudit,
     recordPendingReview: pipelineVersions.recordPendingReview,
     rejectProposal: pipelineVersions.rejectProposal,
     resumePlayerAfterReview,
     reviewAssistant,
-    searchDataHubAssets: dataHub.searchAssets,
     setActivity,
     setContextMenu,
+    setEdges,
     setNodes,
     setProjectTitle,
     setProposal,
@@ -186,8 +178,6 @@ export default function App() {
     setSettingsOpen,
     setSettingsSection,
     versions: pipelineVersions.versions,
-    workspace,
-    writeDataHubDecision: dataHub.writeDecision,
   })
   const reworkSelectedWithAgent = useSelectedCardRework({
     active: ai.active,
@@ -244,9 +234,9 @@ export default function App() {
   }, [activity])
   useEffect(() => { window.localStorage.removeItem('game-lab-versions') }, [])
   useEffect(() => {
-    if (!window.dataLab) return
-    void window.dataLab.getWindowState().then((state) => setNativeFullscreen(state.fullscreen)).catch(() => undefined)
-    return window.dataLab.onWindowStateChanged((state) => setNativeFullscreen(state.fullscreen))
+    if (!window.gameLab) return
+    void window.gameLab.getWindowState().then((state) => setNativeFullscreen(state.fullscreen)).catch(() => undefined)
+    return window.gameLab.onWindowStateChanged((state) => setNativeFullscreen(state.fullscreen))
   }, [])
   useEffect(() => {
     const started = player.playerState === 'running' && previousPlayerState.current !== 'running'
@@ -255,8 +245,8 @@ export default function App() {
     setNodes((current) => pruneOrphanedCards(current, edges))
   }, [edges, player.playerState, setNodes])
   useEffect(() => {
-    if (!window.dataLab) return
-    return window.dataLab.onHumanReviewOpened(({ versionId }) => {
+    if (!window.gameLab) return
+    return window.gameLab.onHumanReviewOpened(({ versionId }) => {
       setRequestedVersionId(versionId)
       setSettingsSection('versions')
       setSettingsOpen(true)
@@ -301,7 +291,7 @@ export default function App() {
           cards: nodes.length,
           edges: edges.length,
           versions: pipelineVersions.versions.length,
-          mcp: dataHub.connectionMode === 'connected' ? `MCP ${dataHub.mcpTransport} connected` : 'MCP offline',
+          game: 'Local Game Bridge',
           model: `${ai.active.label} · ${ai.active.model}`,
         },
         onAsk: (question) => { void reviewAssistant.ask(question) },
@@ -309,10 +299,8 @@ export default function App() {
         onStop: reviewAssistant.stop,
       }}
       proposal={proposal}
-      relatedAssets={[...new Set(nodes.flatMap((node) => node.data.datahubUrn ? [node.data.datahubUrn] : []))]}
       revisionId={pipelineVersions.pendingVersionId}
-      writebackAvailable={dataHub.connectionMode === 'connected' && dataHub.settings.writebackEnabled && dataHub.writebackAvailable}
-      onApply={(writebackRequested) => { void player.approveAgentProposal(writebackRequested).then((applied) => { if (applied) setProposalReviewOpen(false) }) }}
+      onApply={() => { void player.approveAgentProposal().then((applied) => { if (applied) setProposalReviewOpen(false) }) }}
       onClose={() => setProposalReviewOpen(false)}
       onDiscard={() => { setProposalReviewOpen(false); player.rejectAgentProposal() }}
     />}
@@ -323,17 +311,12 @@ export default function App() {
       aiStatus={ai.aiStatus}
       autonomyPolicy={autonomyPolicy}
       chatGPTStatus={ai.chatGPTStatus}
-      catalogConnectors={dataHub.catalogConnectors}
-      connectionMode={dataHub.connectionMode}
-      dataHubSettings={dataHub.settings}
       appUpdateBusy={appUpdates.busy}
       appUpdateStatus={appUpdates.status}
       errorCount={errors.length}
       findingCount={issues.length}
       incidentReportCount={incidents.events.length}
       initialSection={settingsSection}
-      mcpMessage={dataHub.mcpMessage}
-      mcpTransport={dataHub.mcpTransport}
       onApprovePendingReview={(versionId) => {
         const reviewedVersion = pipelineVersions.versions.find((version) => version.id === versionId)
         const currentNodeIds = new Set(nodes.map((node) => node.id))
@@ -358,7 +341,6 @@ export default function App() {
       onConnectChatGPT={ai.connectChatGPT}
       onCreateWorkspace={workspace.createWorkspace}
       onDeleteWorkspace={workspace.deleteWorkspace}
-      onDeleteCatalogConnector={dataHub.deleteCatalogConnector}
       onDisconnectChatGPT={ai.disconnectChatGPT}
       onEmergencyStop={player.stopAgent}
       onDuplicateWorkspace={workspace.duplicateWorkspace}
@@ -369,8 +351,8 @@ export default function App() {
       onInstallAppUpdate={appUpdates.install}
       onLoadDiagnostics={diagnostics.loadBundle}
       onSaveDiagnosticSettings={async (settings) => {
-        if (!window.dataLab) throw new Error('Diagnostics require the Electron application')
-        return window.dataLab.saveDiagnosticSettings(settings)
+        if (!window.gameLab) throw new Error('Diagnostics require the Electron application')
+        return window.gameLab.saveDiagnosticSettings(settings)
       }}
       onLoadPreset={(presetId) => {
         workspace.detachWorkspace()
@@ -386,15 +368,11 @@ export default function App() {
       onOpenWorkspace={workspace.openWorkspace}
       onRefreshAiModelCatalog={ai.refreshAiModelCatalog}
       onRejectPendingReview={pipelineVersions.rejectPendingVersionById}
-      onRemindHumanReview={(version) => { if (window.dataLab) void window.dataLab.notifyHumanReview({ cardLabel: version.label, reason: version.description ?? 'Human Review is still pending.', versionId: version.id, remind: true }) }}
+      onRemindHumanReview={(version) => { if (window.gameLab) void window.gameLab.notifyHumanReview({ cardLabel: version.label, reason: version.description ?? 'Human Review is still pending.', versionId: version.id, remind: true }) }}
       onRenameWorkspace={workspace.renameWorkspace}
       onSaveAiSettings={ai.saveAiConnection}
-      onSaveCatalogConnector={dataHub.saveCatalogConnector}
-      onSaveDataHubSettings={dataHub.saveSettings}
       onSelectActiveAiSource={ai.selectActiveAgentSource}
       onSetAppUpdateChannel={appUpdates.setChannel}
-      onSyncDataHub={dataHub.syncDataHub}
-      onTestCatalogConnector={dataHub.testCatalogConnector}
       onTestAiConnection={ai.testAiConnection}
       onThemeChange={setTheme}
       onValidate={() => {
@@ -462,7 +440,7 @@ export default function App() {
         : reportsOpen
           ? <aside aria-label="Incident reports" className="inspector-panel operations-panel" id="game-lab-reports"><IncidentReportsView events={incidents.events} incidents={incidents.summaries} onClose={() => setReportsOpen(false)} onOpenProposal={() => setProposalReviewOpen(true)} onSelectCard={(nodeId) => { setSelectedId(nodeId); setReportsOpen(false); setInspectorReturn(undefined); setInspectorOpen(true) }} proposal={proposal?.incidentKey ? proposal : undefined} /></aside>
           : <aside aria-hidden={!inspectorOpen} aria-label="Card inspector" className={`inspector-panel ${inspectorOpen ? '' : 'is-closed'}`} id="game-lab-inspector" inert={!inspectorOpen} tabIndex={-1}>
-            <CardInspectorView dataHubConnected={dataHub.catalogConnectionMode === 'connected'} errorCount={errors.length} issues={issues} onBack={inspectorReturn ? () => { setInspectorOpen(false); if (inspectorReturn === 'risks') setRisksOpen(true); else setResultsOpen(true); setInspectorReturn(undefined) } : undefined} onBindDataHubSource={pipeline.bindDataHubSource} onClose={() => { setInspectorReturn(undefined); setInspectorOpen(false) }} onFocusDiagram={pipeline.focusIncidentDiagram} onInspectDataHubAsset={dataHub.inspectAsset} onOpenDataHubSettings={() => { setSettingsSection('connections'); setSettingsOpen(true) }} onSearchDataHub={dataHub.searchAssets} onSelectNode={setSelectedId} onUpdate={pipeline.updateSelected} returnLabel={inspectorReturn === 'risks' ? 'Risks' : inspectorReturn === 'results' ? 'Results' : undefined} selected={selected} workbenchAssets={Object.fromEntries(nodes.flatMap((node) => (node.data.assetRef ?? node.data.datahubUrn) ? [[node.data.assetRef ?? node.data.datahubUrn!, { nodeId: node.id, label: node.data.label }]] : []))} />
+            <CardInspectorView errorCount={errors.length} issues={issues} onBack={inspectorReturn ? () => { setInspectorOpen(false); if (inspectorReturn === 'risks') setRisksOpen(true); else setResultsOpen(true); setInspectorReturn(undefined) } : undefined} onClose={() => { setInspectorReturn(undefined); setInspectorOpen(false) }} onFocusDiagram={pipeline.focusIncidentDiagram} onSelectNode={setSelectedId} onUpdate={pipeline.updateSelected} returnLabel={inspectorReturn === 'risks' ? 'Risks' : inspectorReturn === 'results' ? 'Results' : undefined} selected={selected} />
           </aside>}
     </section>
 

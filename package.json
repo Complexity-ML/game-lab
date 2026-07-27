@@ -26,9 +26,6 @@
     "setup:build:mac": "npm run build:mac --prefix apps/bootstrap-installer",
     "setup:build:win": "npm run build:win --prefix apps/bootstrap-installer",
     "verify:electron-load": "npm run build:electron && node scripts/verify-electron-load.mjs",
-    "verify:datahub-oss": "node scripts/verify-datahub-oss.mjs --query=server",
-    "verify:datahub-agent": "npm run build:electron && node scripts/generate-datahub-agent-proposal.mjs",
-    "approve:datahub-agent": "npm run build:electron && node scripts/approve-datahub-agent-proposal.mjs",
     "test": "vitest run && npm run verify:electron-load",
     "preview": "vite preview"
   },
@@ -98,7 +95,6 @@
     ]
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "@openai/codex": "^0.144.6",
     "@xyflow/react": "^12.11.2",
     "electron-updater": "^6.8.5",

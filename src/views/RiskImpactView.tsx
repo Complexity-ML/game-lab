@@ -21,11 +21,11 @@ interface RiskImpactViewProps {
 const labels: Record<'all' | RiskDomain, string> = {
   all: 'All',
   general: 'General',
-  data: 'Data',
-  ml: 'ML',
-  analytics: 'Analytics',
-  privacy: 'Privacy',
-  governance: 'Governance',
+  gameplay: 'Gameplay',
+  world: 'World',
+  player: 'Player',
+  mission: 'Mission',
+  performance: 'Performance',
   security: 'Security',
   reliability: 'Reliability',
 }

@@ -11,7 +11,7 @@ GAME LAB targets a production workbench of **300 cards and 420 edges** on a curr
 ## Runtime protections
 
 - React Flow renders only elements inside the viewport.
-- Styled edge objects are memoized until lineage changes.
+- Styled edge objects are memoized until workflow connections change.
 - The interactive minimap is disabled above 200 cards; pan and zoom remain available through the canvas controls.
 - Prompt text is local to `AgentPrompt`, so typing does not update graph state.
 - Reduced-motion users receive effectively instant transitions and animations.

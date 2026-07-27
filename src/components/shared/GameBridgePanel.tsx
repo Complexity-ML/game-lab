@@ -19,14 +19,14 @@ export function GameBridgePanel() {
   const [feedback, setFeedback] = useState('')
 
   const refresh = async (readObservation = false) => {
-    if (!window.dataLab) return
+    if (!window.gameLab) return
     setBusy(true)
     setFeedback('')
     try {
-      const nextStatus = await window.dataLab.getGameBridgeStatus()
+      const nextStatus = await window.gameLab.getGameBridgeStatus()
       setStatus(nextStatus)
-      if (readObservation && nextStatus.mode === 'connected') setObservation(await window.dataLab.getGameObservation())
-      setCheckpoints(await window.dataLab.listGameCheckpoints(8))
+      if (readObservation && nextStatus.mode === 'connected') setObservation(await window.gameLab.getGameObservation())
+      setCheckpoints(await window.gameLab.listGameCheckpoints(8))
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : 'Game Bridge request failed.')
     } finally {
@@ -36,11 +36,11 @@ export function GameBridgePanel() {
 
   useEffect(() => {
     let active = true
-    if (!window.dataLab) return
+    if (!window.gameLab) return
     void Promise.all([
-      window.dataLab.getGameBridgeSettings(),
-      window.dataLab.getGameBridgeStatus(),
-      window.dataLab.listGameCheckpoints(8),
+      window.gameLab.getGameBridgeSettings(),
+      window.gameLab.getGameBridgeStatus(),
+      window.gameLab.listGameCheckpoints(8),
     ]).then(([settings, nextStatus, nextCheckpoints]) => {
       if (!active) return
       if (endpointRef.current) endpointRef.current.value = settings.endpoint
@@ -53,12 +53,12 @@ export function GameBridgePanel() {
   }, [])
 
   const saveAndConnect = async () => {
-    if (!window.dataLab) return
+    if (!window.gameLab) return
     setBusy(true)
     setFeedback('')
     try {
-      await window.dataLab.saveGameBridgeSettings({ endpoint: endpointRef.current?.value.trim() ?? '' })
-      const nextStatus = await window.dataLab.getGameBridgeStatus()
+      await window.gameLab.saveGameBridgeSettings({ endpoint: endpointRef.current?.value.trim() ?? '' })
+      const nextStatus = await window.gameLab.getGameBridgeStatus()
       setStatus(nextStatus)
       setFeedback(nextStatus.message)
     } catch (error) {
@@ -69,10 +69,10 @@ export function GameBridgePanel() {
   }
 
   const emergencyStop = async () => {
-    if (!window.dataLab) return
+    if (!window.gameLab) return
     setBusy(true)
     try {
-      const result = await window.dataLab.emergencyStopGameBridge()
+      const result = await window.gameLab.emergencyStopGameBridge()
       setFeedback(result.summary)
     } finally {
       setBusy(false)
@@ -85,7 +85,7 @@ export function GameBridgePanel() {
       <small>{status.mode === 'connected' ? `${status.game ?? 'Game'} connected` : 'Offline'}</small>
     </div>
     <div className="settings-setting-row">
-      <div className={`settings-icon datahub-${status.mode === 'connected' ? 'connected' : 'demo'}`}><Gamepad2 size={19} /></div>
+      <div className={`settings-icon bridge-${status.mode === 'connected' ? 'connected' : 'demo'}`}><Gamepad2 size={19} /></div>
       <div><strong>{status.mode === 'connected' ? 'Structured game state ready' : 'Game adapter not connected'}</strong><p>{status.message}</p></div>
       <ActionButton disabled={busy} icon={<RefreshCw size={14} />} onClick={() => void refresh(true)} variant="ghost">Observe</ActionButton>
     </div>
@@ -95,8 +95,8 @@ export function GameBridgePanel() {
       <small>Protocol <code>game-lab.control.v1</code>. Version 1 accepts only loopback HTTP on the same computer as the game or bot.</small>
     </label>
     <div className="ai-connection-actions">
-      <ActionButton disabled={busy || !window.dataLab} icon={<Square size={13} />} onClick={() => void emergencyStop()} variant="ghost">Stop game agent</ActionButton>
-      <ActionButton disabled={busy || !window.dataLab} icon={<Save size={14} />} onClick={() => void saveAndConnect()} variant="primary">{busy ? 'Checking…' : 'Save & connect'}</ActionButton>
+      <ActionButton disabled={busy || !window.gameLab} icon={<Square size={13} />} onClick={() => void emergencyStop()} variant="ghost">Stop game agent</ActionButton>
+      <ActionButton disabled={busy || !window.gameLab} icon={<Save size={14} />} onClick={() => void saveAndConnect()} variant="primary">{busy ? 'Checking…' : 'Save & connect'}</ActionButton>
     </div>
     {observation && <div className="game-observation-summary">
       <ShieldAlert size={17} />

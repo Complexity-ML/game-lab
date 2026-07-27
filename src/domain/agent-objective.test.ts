@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { dataHubDiscoveryQuery, defaultBlankObjective, resolveAgentObjective } from './agent-objective'
+import { defaultBlankObjective, gameDiscoveryQuery, resolveAgentObjective } from './agent-objective'
 
 describe('bounded agent objectives', () => {
   it('uses a focused game-server discovery for blank missions and preserves explicit controller missions', () => {
-    expect(dataHubDiscoveryQuery(defaultBlankObjective)).toBe('game server')
-    expect(dataHubDiscoveryQuery('Execute GAME LAB Control policy: objective=maintain governed graph | on_review=resume | on_idle=monitor')).toBe('game server')
-    expect(dataHubDiscoveryQuery('Inspect Customer_Analytics_Measures')).toBe('Inspect Customer_Analytics_Measures')
+    expect(gameDiscoveryQuery(defaultBlankObjective)).toBe('game server')
+    expect(gameDiscoveryQuery('Execute GAME LAB Control policy: objective=maintain reviewed game graph | on_review=resume | on_idle=monitor')).toBe('game server')
+    expect(gameDiscoveryQuery('Inspect the nearby Minecraft world')).toBe('Inspect the nearby Minecraft world')
   })
 
   it('turns empty Play into a private game operations mission', () => {
@@ -16,9 +16,9 @@ describe('bounded agent objectives', () => {
     })
   })
 
-  it('accepts data work and source-label matches while rejecting unrelated noise', () => {
-    expect(resolveAgentObjective('Trace lineage for the billing table', { hasGraph: true, matchedSource: false }).accepted).toBe(true)
-    expect(resolveAgentObjective('Customers 360', { hasGraph: true, matchedSource: true }).accepted).toBe(true)
+  it('accepts game work and known-card matches while rejecting unrelated noise', () => {
+    expect(resolveAgentObjective('Inspect the Minecraft inventory', { hasGraph: true, matchedSource: false }).accepted).toBe(true)
+    expect(resolveAgentObjective('Minecraft Agent', { hasGraph: true, matchedSource: true }).accepted).toBe(true)
     expect(resolveAgentObjective('tell me a joke about bananas', { hasGraph: true, matchedSource: false }).accepted).toBe(false)
   })
 })

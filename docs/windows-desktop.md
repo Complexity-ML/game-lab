@@ -4,7 +4,7 @@ GAME LAB keeps Electron's standard Windows frame. The system title bar and its n
 
 ## Development
 
-Requirements: Windows 10 or 11, Node.js 20+ and npm. DataHub OSS stdio also requires `uvx` on `PATH`.
+Requirements: Windows 10 or 11, Node.js 20+ and npm. Minecraft control also requires the local Mineflayer adapter and access to an authorized private server.
 
 ```powershell
 npm ci

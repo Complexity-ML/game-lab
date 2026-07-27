@@ -37,14 +37,14 @@ describe('card compatibility', () => {
     }
   })
 
-  it('rejects semantically invalid lineage shortcuts', () => {
+  it('rejects semantically invalid workflow shortcuts', () => {
     expect(canConnectCardKinds('profile', 'transform')).toBe(false)
     expect(canConnectCardKinds('risk', 'transform')).toBe(false)
     expect(canConnectCardKinds('validation', 'analysis')).toBe(false)
     expect(canConnectCardKinds('review', 'profile')).toBe(false)
   })
 
-  it('keeps global cards outside lineage and preserves feedback semantics', () => {
+  it('keeps global cards outside the action path and preserves feedback semantics', () => {
     expect(cardConnectionError('control', 'source')).toMatch(/global policy/)
     expect(cardConnectionError('explorer', 'query')).toMatch(/sidecar/)
     expect(cardConnectionError('analysis', 'source')).toMatch(/begin/)

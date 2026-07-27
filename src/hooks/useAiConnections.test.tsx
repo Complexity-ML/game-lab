@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AiStatus, ChatGPTSessionStatus } from '../domain/ai'
 import { disconnectedAiStatus, observeChatGPTConnection, useAiConnections } from './useAiConnections'
 
-afterEach(() => { delete window.dataLab })
+afterEach(() => { delete window.gameLab })
 
 const connectedChatGPT: ChatGPTSessionStatus = { available: true, connected: true, selectedModel: 'gpt-5.6-sol' }
 
@@ -28,12 +28,12 @@ describe('active AI source recovery', () => {
 
   it('activates an already connected ChatGPT account when the saved API source is offline', async () => {
     const setActiveAiSource = vi.fn(async (source: 'chatgpt') => ({ source }))
-    window.dataLab = {
+    window.gameLab = {
       getAiStatus: vi.fn(async () => disconnectedAiStatus as AiStatus),
       getChatGPTStatus: vi.fn(async () => connectedChatGPT),
       getActiveAiSource: vi.fn(async () => ({ source: 'openai' as const })),
       setActiveAiSource,
-    } as unknown as NonNullable<typeof window.dataLab>
+    } as unknown as NonNullable<typeof window.gameLab>
 
     const { result } = renderHook(() => useAiConnections(vi.fn()))
 
@@ -44,13 +44,13 @@ describe('active AI source recovery', () => {
 
   it('selects ChatGPT immediately after a successful sign-in', async () => {
     const setActiveAiSource = vi.fn(async (source: 'chatgpt') => ({ source }))
-    window.dataLab = {
+    window.gameLab = {
       getAiStatus: vi.fn(async () => disconnectedAiStatus as AiStatus),
       getChatGPTStatus: vi.fn(async () => ({ available: true, connected: false })),
       getActiveAiSource: vi.fn(async () => ({ source: 'openai' as const })),
       connectChatGPT: vi.fn(async () => connectedChatGPT),
       setActiveAiSource,
-    } as unknown as NonNullable<typeof window.dataLab>
+    } as unknown as NonNullable<typeof window.gameLab>
 
     const { result } = renderHook(() => useAiConnections(vi.fn()))
     await act(() => result.current.connectChatGPT())
@@ -60,12 +60,12 @@ describe('active AI source recovery', () => {
 
   it('refreshes the account immediately after cancelling sign-in', async () => {
     const cancelChatGPTLogin = vi.fn(async () => ({ cancelled: true }))
-    window.dataLab = {
+    window.gameLab = {
       getAiStatus: vi.fn(async () => disconnectedAiStatus as AiStatus),
       getChatGPTStatus: vi.fn(async () => ({ available: true, connected: false })),
       getActiveAiSource: vi.fn(async () => ({ source: 'openai' as const })),
       cancelChatGPTLogin,
-    } as unknown as NonNullable<typeof window.dataLab>
+    } as unknown as NonNullable<typeof window.gameLab>
 
     const activity = vi.fn()
     const { result } = renderHook(() => useAiConnections(activity))

@@ -1,76 +1,95 @@
+import type { Edge } from '@xyflow/react'
+import type { GameBridgeStatus, GameObservation } from './game-bridge'
 import { newCard, type PipelineNode } from './pipeline'
-import { parseWorkerPolicy, workerPolicyRule } from './worker-policy'
 
-export function ensureAutonomousSystemCards(nodes: PipelineNode[]) {
+interface GameBootstrapContext {
+  observation: GameObservation
+  status: GameBridgeStatus
+}
+
+function minecraftAgent(nodes: PipelineNode[], context: GameBootstrapContext) {
+  const created = newCard('agent', nodes.length)
+  const observation = context.observation
+  return {
+    ...created,
+    id: 'game-bridge-agent',
+    data: {
+      ...created.data,
+      label: observation.gameState?.kind === 'minecraft' ? 'Minecraft Agent' : `${context.status.game ?? 'Game'} Agent`,
+      description: `Governed test player connected through ${context.status.game ?? 'the local Game Bridge'}. It observes structured state and executes one reviewed allowlisted action at a time.`,
+      owner: 'GAME LAB Agent',
+      status: 'healthy' as const,
+      rule: 'environment=private_server | observe=structured_state | act=allowlist | checkpoint=current_observation | emergency_stop=required',
+      agentTelemetry: {
+        mode: 'test-player' as const,
+        state: observation.mission.completed ? 'idle' as const : 'observing' as const,
+        objective: observation.mission.objective,
+        safetyMode: 'private-server-only' as const,
+        confidence: 1,
+        lastAction: `Observed ${observation.environment.area} at ${observation.checkpointId}`,
+      },
+    },
+  }
+}
+
+function gameReview(nodes: PipelineNode[]) {
+  const created = newCard('review', nodes.length)
+  return {
+    ...created,
+    id: 'game-bridge-review',
+    data: {
+      ...created.data,
+      label: 'Review next game action',
+      description: 'A human approves or rejects the next checkpoint-bound game action before it reaches the private server.',
+      owner: 'Game Operator',
+      status: 'draft' as const,
+      rule: 'checkpoint=current_game_observation | approve=one_allowlisted_action | reject=observe_only | timeout=manual',
+    },
+  }
+}
+
+export function ensureAutonomousSystemCards(nodes: PipelineNode[], edges: Edge[], context: GameBootstrapContext) {
   let controller = nodes.find((node) => node.data.kind === 'control' && node.data.controlMode === 'autonomous-player')
   const added: PipelineNode[] = []
   if (!controller) {
     const created = newCard('control', nodes.length)
     controller = {
       ...created,
+      id: 'game-lab-controller',
       data: {
         ...created.data,
         label: 'GAME LAB Controller',
-        description: 'Global autonomous policy. It controls review checkpoints, automatic resume and idle monitoring without entering dataset lineage.',
+        description: 'Global private-game policy. It controls review checkpoints, automatic resume and emergency-stop behavior outside the action path.',
         owner: 'GAME LAB Agent',
         status: 'healthy',
+        rule: 'objective=operate authorized private game | mode=autonomous | on_review=checkpoint_and_resume | on_idle=observe | emergency_stop=required',
       },
     }
     added.push(controller)
   }
-  if (!nodes.some((node) => node.data.kind === 'worker'
-    && node.data.workerMode === 'bounded-execution'
-    && parseWorkerPolicy(node.data.rule).role === 'exploration')) {
-    const worker = newCard('worker', nodes.length + added.length)
-    added.push({
-      ...worker,
-      data: {
-        ...worker.data,
-        label: 'Catalog Audit Worker',
-        description: 'Runs bounded catalog inspection batches with branch-only context, checkpoint recovery and atomic results.',
-        owner: 'GAME LAB Agent',
-        status: 'healthy',
-        rule: workerPolicyRule({
-          role: 'exploration',
-          batchSize: 8,
-          concurrency: 4,
-          retry: 'checkpoint',
-          context: 'branch_only',
-          merge: 'atomic',
-        }),
-      },
+
+  let agent = nodes.find((node) => node.data.kind === 'agent')
+  if (!agent) {
+    agent = minecraftAgent([...nodes, ...added], context)
+    added.push(agent)
+  }
+
+  let review = nodes.find((node) => node.data.kind === 'review')
+  if (!review) {
+    review = gameReview([...nodes, ...added])
+    added.push(review)
+  }
+
+  const allEdges = [...edges]
+  const addedEdges: Edge[] = []
+  if (!allEdges.some((edge) => edge.source === agent.id && edge.target === review.id)) {
+    addedEdges.push({
+      id: 'game-bridge-agent-review',
+      source: agent.id,
+      target: review.id,
+      type: 'elastic',
     })
   }
-  if (!nodes.some((node) => node.data.kind === 'explorer' && node.data.explorerMode === 'catalog-fanout')) {
-    const explorer = newCard('explorer', nodes.length + added.length)
-    added.push({
-      ...explorer,
-      data: {
-        ...explorer.data,
-        label: 'DataHub Catalog Explorer',
-        description: 'Discovers every governed dataset, audits metadata in parallel batches, checkpoints coverage and emits only evidence-backed incident branches.',
-        owner: 'GAME LAB Agent',
-        status: 'draft',
-        exploration: {
-          query: '*',
-          total: 0,
-          discovered: 0,
-          inspected: 0,
-          failed: 0,
-          incidents: 0,
-          governanceGaps: 0,
-          concurrency: 4,
-          batchSize: 8,
-          remaining: 0,
-          mode: 'catalog',
-          cacheMode: 'prefer',
-          phase: 'checkpoint',
-          state: 'idle',
-          checkpointAt: new Date().toISOString(),
-          datasets: [],
-        },
-      },
-    })
-  }
-  return { added, controller }
+
+  return { added, addedEdges, agent, controller, review }
 }

@@ -43,12 +43,12 @@ export function useReviewAssistant(options: {
     runId.current += 1
     setBusy(false)
     options.setActivity('Human Review assistant stopped · proposal and graph unchanged')
-    if (window.dataLab) void window.dataLab.cancelAiProposal()
-    if (window.dataLab) void window.dataLab.cancelChatGPTProposal()
+    if (window.gameLab) void window.gameLab.cancelAiProposal()
+    if (window.gameLab) void window.gameLab.cancelChatGPTProposal()
   }
 
   const ask = async (question: string) => {
-    if (!options.proposal || busy || !window.dataLab) return
+    if (!options.proposal || busy || !window.gameLab) return
     if (!options.active.connected) {
       options.openAiSettings()
       options.setActivity(`${options.active.label} is not connected · Human Review remains fully manual`)
@@ -69,8 +69,8 @@ export function useReviewAssistant(options: {
         versions: options.versions,
       })
       const response = options.activeAiSource === 'chatgpt'
-        ? await window.dataLab.runChatGPTProposal(payload)
-        : await window.dataLab.runAiProposal(payload)
+        ? await window.gameLab.runChatGPTProposal(payload)
+        : await window.gameLab.runAiProposal(payload)
       if (runId.current !== currentRun) return
       setAnswer({
         summary: response.proposal.summary,

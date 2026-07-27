@@ -1,4 +1,4 @@
-export type DiagnosticCategory = 'mcp' | 'provider' | 'validation' | 'revision' | 'renderer' | 'workspace'
+export type DiagnosticCategory = 'bridge' | 'provider' | 'validation' | 'revision' | 'renderer' | 'workspace'
 export type DiagnosticStatus = 'info' | 'success' | 'warning' | 'error'
 export type DiagnosticLevel = 'all' | 'warnings' | 'errors'
 
@@ -25,6 +25,6 @@ export interface DiagnosticBundle {
 }
 
 export function recordDiagnostic(event: DiagnosticInput) {
-  if (!window.dataLab?.recordDiagnostic) return
-  void window.dataLab.recordDiagnostic(event).catch(() => undefined)
+  if (!window.gameLab?.recordDiagnostic) return
+  void window.gameLab.recordDiagnostic(event).catch(() => undefined)
 }

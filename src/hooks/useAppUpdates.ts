@@ -8,9 +8,9 @@ export function useAppUpdates(reportActivity: (message: string) => void) {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (!window.dataLab?.getAppUpdateStatus) return
-    void window.dataLab.getAppUpdateStatus().then(setStatus).catch((error) => notifyError(error, 'Unable to load update status'))
-    return window.dataLab.onAppUpdateStatusChanged?.(setStatus)
+    if (!window.gameLab?.getAppUpdateStatus) return
+    void window.gameLab.getAppUpdateStatus().then(setStatus).catch((error) => notifyError(error, 'Unable to load update status'))
+    return window.gameLab.onAppUpdateStatusChanged?.(setStatus)
   }, [])
 
   const perform = useCallback(async (action: () => Promise<AppUpdateStatus>, activity: string) => {
@@ -29,30 +29,30 @@ export function useAppUpdates(reportActivity: (message: string) => void) {
   }, [reportActivity])
 
   const setChannel = (channel: AppUpdateChannel) => {
-    if (!window.dataLab?.setAppUpdateChannel) return Promise.reject(new Error('Updates require the Electron application'))
-    return perform(() => window.dataLab!.setAppUpdateChannel(channel), `${channel === 'stable' ? 'Stable' : 'Main preview'} update channel selected`)
+    if (!window.gameLab?.setAppUpdateChannel) return Promise.reject(new Error('Updates require the Electron application'))
+    return perform(() => window.gameLab!.setAppUpdateChannel(channel), `${channel === 'stable' ? 'Stable' : 'Main preview'} update channel selected`)
   }
 
   const check = () => {
-    if (!window.dataLab?.checkForAppUpdate) return Promise.reject(new Error('Updates require the Electron application'))
-    return perform(() => window.dataLab!.checkForAppUpdate(), 'Update check completed')
+    if (!window.gameLab?.checkForAppUpdate) return Promise.reject(new Error('Updates require the Electron application'))
+    return perform(() => window.gameLab!.checkForAppUpdate(), 'Update check completed')
   }
 
   const download = () => {
-    if (!window.dataLab?.downloadAppUpdate) return Promise.reject(new Error('Updates require the Electron application'))
-    return perform(() => window.dataLab!.downloadAppUpdate(), 'Signed update download started')
+    if (!window.gameLab?.downloadAppUpdate) return Promise.reject(new Error('Updates require the Electron application'))
+    return perform(() => window.gameLab!.downloadAppUpdate(), 'Signed update download started')
   }
 
   const install = () => {
-    if (!window.dataLab?.installAppUpdate) return Promise.reject(new Error('Updates require the Electron application'))
-    return perform(() => window.dataLab!.installAppUpdate(), 'Update installation requested')
+    if (!window.gameLab?.installAppUpdate) return Promise.reject(new Error('Updates require the Electron application'))
+    return perform(() => window.gameLab!.installAppUpdate(), 'Update installation requested')
   }
 
   const openSetup = async () => {
-    if (!window.dataLab?.openAppSetupUpdater) throw new Error('GAME LAB Setup requires the Electron application')
+    if (!window.gameLab?.openAppSetupUpdater) throw new Error('GAME LAB Setup requires the Electron application')
     setBusy(true)
     try {
-      const result = await window.dataLab.openAppSetupUpdater()
+      const result = await window.gameLab.openAppSetupUpdater()
       reportActivity(`GAME LAB Setup opened on the ${result.channel} channel`)
       return result
     } catch (error) {

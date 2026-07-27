@@ -5,7 +5,8 @@ import { chatGPTDynamicTools, dynamicToolCallResponse, loginCompletionState, tur
 describe('ChatGPT Codex dynamic GAME LAB tools', () => {
   it('maps the shared strict tool surface to App Server dynamic tools', () => {
     expect(chatGPTDynamicTools.map((tool) => tool.name)).toContain('finish_plan')
-    expect(chatGPTDynamicTools.map((tool) => tool.name)).toContain('read_catalog_checkpoint')
+    expect(chatGPTDynamicTools.map((tool) => tool.name)).toContain('queue_game_action')
+    expect(chatGPTDynamicTools.map((tool) => tool.name)).not.toContain('read_catalog_checkpoint')
     expect(chatGPTDynamicTools.find((tool) => tool.name === 'connect_cards')).toMatchObject({
       type: 'function',
       inputSchema: { type: 'object', additionalProperties: false },

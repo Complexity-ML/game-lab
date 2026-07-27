@@ -283,7 +283,6 @@ type ValueTable =
   | 'graph_node_values'
   | 'graph_edge_values'
   | 'workspace_version_values'
-  | 'catalog_checkpoint_values'
 
 function writeRelationalValues(
   target: DatabaseSync,
@@ -429,9 +428,9 @@ function writeWorkspaceDocument(target: DatabaseSync, workspaceId: string, slot:
   `)
   const insertEvidence = target.prepare(`
     INSERT INTO workspace_version_evidence (
-      document_id, version_id, ordinal, connector_id, source_system, asset_ref,
-      tool, urn, captured_at, expires_at, status, summary, cached, stale
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      document_id, version_id, ordinal, tool, source,
+      captured_at, expires_at, status, summary, cached, stale
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   versions.forEach((input, ordinal) => {
     const version = record(input)
@@ -468,11 +467,8 @@ function writeWorkspaceDocument(target: DatabaseSync, workspaceId: string, slot:
         id,
         versionId,
         evidenceOrdinal,
-        typeof evidence.connectorId === 'string' ? evidence.connectorId : null,
-        typeof evidence.sourceSystem === 'string' ? evidence.sourceSystem : null,
-        typeof evidence.assetRef === 'string' ? evidence.assetRef : null,
         typeof evidence.tool === 'string' ? evidence.tool : '',
-        typeof evidence.urn === 'string' ? evidence.urn : '',
+        typeof evidence.source === 'string' ? evidence.source : '',
         typeof evidence.capturedAt === 'string' ? evidence.capturedAt : '',
         typeof evidence.expiresAt === 'string' ? evidence.expiresAt : '',
         typeof evidence.status === 'string' ? evidence.status : 'unavailable',
@@ -510,11 +506,8 @@ function readWorkspaceDocument(target: DatabaseSync, workspaceId: string, slot: 
         WHERE document_id = ? AND version_id = ? ORDER BY ordinal
       `).all(row.id, version.version_id) as unknown as Array<Record<string, unknown>>
       if (version.evidence_present === 1) result.evidence = evidence.map((item) => ({
-        ...(typeof item.connector_id === 'string' ? { connectorId: item.connector_id } : {}),
-        ...(typeof item.source_system === 'string' ? { sourceSystem: item.source_system } : {}),
-        ...(typeof item.asset_ref === 'string' ? { assetRef: item.asset_ref } : {}),
         tool: item.tool,
-        urn: item.urn,
+        source: item.source,
         capturedAt: item.captured_at,
         expiresAt: item.expires_at,
         status: item.status,
@@ -562,11 +555,61 @@ function tableColumns(target: DatabaseSync, table: string) {
   return new Set((target.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[]).map((column) => column.name))
 }
 
+function purgeRemovedIntegrationStorage(target: DatabaseSync) {
+  target.exec(`
+    DROP TABLE IF EXISTS catalog_checkpoint_values;
+    DROP TABLE IF EXISTS catalog_checkpoints;
+  `)
+  target.prepare("DELETE FROM app_settings WHERE lower(key) LIKE '%datahub%' OR lower(key) LIKE '%catalog%'").run()
+
+  const legacyNodes = target.prepare(`
+    SELECT DISTINCT snapshot_id, node_id
+    FROM graph_node_values
+    WHERE lower(path) LIKE '%datahub%'
+       OR lower(value_text) LIKE '%datahub%'
+       OR lower(value_text) LIKE '%data_lab%'
+       OR lower(value_text) LIKE '%catalog explorer%'
+  `).all() as unknown as Array<{ snapshot_id: string; node_id: string }>
+  const deleteEdges = target.prepare('DELETE FROM graph_edges WHERE snapshot_id = ? AND (source_id = ? OR target_id = ?)')
+  const deleteNode = target.prepare('DELETE FROM graph_nodes WHERE snapshot_id = ? AND node_id = ?')
+  for (const node of legacyNodes) {
+    deleteEdges.run(node.snapshot_id, node.node_id, node.node_id)
+    deleteNode.run(node.snapshot_id, node.node_id)
+  }
+  target.prepare(`
+    DELETE FROM workspace_document_values
+    WHERE lower(path) LIKE '%datahub%' OR lower(value_text) LIKE '%datahub%' OR lower(value_text) LIKE '%data_lab%'
+  `).run()
+  target.prepare(`
+    DELETE FROM workspace_version_values
+    WHERE lower(path) LIKE '%datahub%' OR lower(value_text) LIKE '%datahub%' OR lower(value_text) LIKE '%data_lab%'
+  `).run()
+
+  const evidenceColumns = tableColumns(target, 'workspace_version_evidence')
+  if (evidenceColumns.size && !evidenceColumns.has('source')) target.exec('DROP TABLE workspace_version_evidence')
+  target.exec(`
+    CREATE TABLE IF NOT EXISTS workspace_version_evidence (
+      document_id TEXT NOT NULL,
+      version_id TEXT NOT NULL,
+      ordinal INTEGER NOT NULL,
+      tool TEXT NOT NULL,
+      source TEXT NOT NULL,
+      captured_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      status TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      cached INTEGER NOT NULL CHECK (cached IN (0, 1)),
+      stale INTEGER NOT NULL CHECK (stale IN (0, 1)),
+      PRIMARY KEY (document_id, version_id, ordinal),
+      FOREIGN KEY (document_id, version_id) REFERENCES workspace_versions(document_id, version_id) ON DELETE CASCADE
+    );
+  `)
+}
+
 function migrateRelationalStorage(target: DatabaseSync, databasePath: string) {
   const workspaceColumns = tableColumns(target, 'workspaces')
-  const checkpointColumns = tableColumns(target, 'catalog_checkpoints')
   const legacyWorkspaceState = tableExists(target, 'workspace_state')
-  const needsMigration = workspaceColumns.has('payload') || workspaceColumns.has('draft_payload') || checkpointColumns.has('payload') || legacyWorkspaceState
+  const needsMigration = workspaceColumns.has('payload') || workspaceColumns.has('draft_payload') || legacyWorkspaceState
   if (!needsMigration) {
     target.exec('PRAGMA user_version = 2')
     return
@@ -628,26 +671,6 @@ function migrateRelationalStorage(target: DatabaseSync, databasePath: string) {
       }
       if (workspaceColumns.has('draft_payload')) target.exec('ALTER TABLE workspaces DROP COLUMN draft_payload')
       target.exec('ALTER TABLE workspaces DROP COLUMN payload')
-    }
-
-    if (checkpointColumns.has('payload')) {
-      const checkpoints = target.prepare('SELECT scope_id, checkpoint_key, payload FROM catalog_checkpoints').all() as unknown as Array<{
-        scope_id: string
-        checkpoint_key: string
-        payload: string
-      }>
-      for (const checkpoint of checkpoints) {
-        const payload = parsePayload(checkpoint.payload)
-        if (payload === null) throw new Error(`Catalog checkpoint ${checkpoint.checkpoint_key} contains invalid legacy JSON`)
-        writeRelationalValues(
-          target,
-          'catalog_checkpoint_values',
-          ['scope_id', 'checkpoint_key'],
-          [checkpoint.scope_id, checkpoint.checkpoint_key],
-          payload,
-        )
-      }
-      target.exec('ALTER TABLE catalog_checkpoints DROP COLUMN payload')
     }
 
     if (legacyWorkspaceState) target.exec('DROP TABLE workspace_state')
@@ -801,11 +824,8 @@ function db(userDataDirectory: string) {
       document_id TEXT NOT NULL,
       version_id TEXT NOT NULL,
       ordinal INTEGER NOT NULL,
-      connector_id TEXT,
-      source_system TEXT,
-      asset_ref TEXT,
       tool TEXT NOT NULL,
-      urn TEXT NOT NULL,
+      source TEXT NOT NULL,
       captured_at TEXT NOT NULL,
       expires_at TEXT NOT NULL,
       status TEXT NOT NULL,
@@ -834,23 +854,6 @@ function db(userDataDirectory: string) {
     );
     CREATE INDEX IF NOT EXISTS incident_events_workspace_time_idx ON incident_events (workspace_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS incident_events_key_time_idx ON incident_events (incident_key, created_at DESC);
-    CREATE TABLE IF NOT EXISTS catalog_checkpoints (
-      scope_id TEXT NOT NULL,
-      checkpoint_key TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (scope_id, checkpoint_key)
-    );
-    CREATE TABLE IF NOT EXISTS catalog_checkpoint_values (
-      scope_id TEXT NOT NULL,
-      checkpoint_key TEXT NOT NULL,
-      path TEXT NOT NULL,
-      ordinal INTEGER NOT NULL,
-      value_type TEXT NOT NULL CHECK (value_type IN ('null', 'string', 'number', 'boolean', 'object', 'array')),
-      value_text TEXT,
-      value_boolean INTEGER CHECK (value_boolean IN (0, 1)),
-      PRIMARY KEY (scope_id, checkpoint_key, path),
-      FOREIGN KEY (scope_id, checkpoint_key) REFERENCES catalog_checkpoints(scope_id, checkpoint_key) ON DELETE CASCADE ON UPDATE CASCADE
-    );
     CREATE TABLE IF NOT EXISTS game_checkpoints (
       id TEXT PRIMARY KEY,
       scope_id TEXT NOT NULL,
@@ -892,6 +895,7 @@ function db(userDataDirectory: string) {
   if (!incidentColumns.some((column) => column.name === 'fingerprint')) database.exec('ALTER TABLE incident_events ADD COLUMN fingerprint TEXT')
   if (!incidentColumns.some((column) => column.name === 'source_system')) database.exec('ALTER TABLE incident_events ADD COLUMN source_system TEXT')
   if (!incidentColumns.some((column) => column.name === 'source_ref')) database.exec('ALTER TABLE incident_events ADD COLUMN source_ref TEXT')
+  purgeRemovedIntegrationStorage(database)
   migrateRelationalStorage(database, databasePath)
   // Older releases persisted unsaved-workbench incidents with a NULL owner.
   // They cannot be restored safely into any later workspace, so remove them.
@@ -975,7 +979,6 @@ export function beginWorkspaceSession(userDataDirectory: string) {
   const previous = readSetting(target, CLEAN_SHUTDOWN_KEY)
   const uncleanShutdown = previous === 'false'
   if (!activeWorkspaceId(target)) {
-    target.prepare("DELETE FROM catalog_checkpoints WHERE scope_id = 'workbench'").run()
     target.prepare("DELETE FROM game_checkpoints WHERE scope_id = 'workbench'").run()
     target.prepare('DELETE FROM agent_proposal_memory WHERE workspace_id IS NULL').run()
   }
@@ -1016,7 +1019,6 @@ export function createWorkspace(userDataDirectory: string, name: unknown, payloa
     writeWorkspaceDocument(target, id, 'committed', payload, timestamp)
     if (!previousWorkspaceId) {
       target.prepare('UPDATE agent_proposal_memory SET workspace_id = ? WHERE workspace_id IS NULL').run(id)
-      target.prepare("UPDATE catalog_checkpoints SET scope_id = ? WHERE scope_id = 'workbench'").run(id)
       target.prepare("UPDATE game_checkpoints SET scope_id = ? WHERE scope_id = 'workbench'").run(id)
     }
     writeSetting(target, ACTIVE_WORKSPACE_KEY, id)
@@ -1067,7 +1069,6 @@ export function deleteWorkspace(userDataDirectory: string, workspaceId: unknown)
   if (!workspace || workspace.archived !== 1) throw new Error('Only an archived workspace can be deleted')
   runTransaction(target, () => {
     target.prepare('DELETE FROM incident_events WHERE workspace_id = ?').run(workspaceId)
-    target.prepare('DELETE FROM catalog_checkpoints WHERE scope_id = ?').run(workspaceId)
     target.prepare('DELETE FROM game_checkpoints WHERE scope_id = ?').run(workspaceId)
     target.prepare('DELETE FROM agent_proposal_memory WHERE workspace_id = ?').run(workspaceId)
     target.prepare('DELETE FROM workspaces WHERE id = ?').run(workspaceId)
@@ -1100,39 +1101,8 @@ export function autosaveWorkspaceDraft(userDataDirectory: string, payload: unkno
   return { saved: true as const, workspaceId, updatedAt: timestamp }
 }
 
-function catalogCheckpointScope(target: DatabaseSync) {
+function gameCheckpointScope(target: DatabaseSync) {
   return activeWorkspaceId(target) ?? 'workbench'
-}
-
-function normalizeCatalogCheckpointKey(value: unknown) {
-  if (typeof value !== 'string' || !/^[a-zA-Z0-9:._|*=-]{1,500}$/.test(value)) throw new Error('Invalid catalog checkpoint key')
-  return value
-}
-
-export function loadCatalogCheckpoint(userDataDirectory: string, checkpointKey: unknown) {
-  const target = db(userDataDirectory)
-  const key = normalizeCatalogCheckpointKey(checkpointKey)
-  const scopeId = catalogCheckpointScope(target)
-  const exists = target.prepare('SELECT 1 FROM catalog_checkpoints WHERE scope_id = ? AND checkpoint_key = ?').get(scopeId, key)
-  return exists ? readRelationalValues(target, 'catalog_checkpoint_values', 'scope_id = ? AND checkpoint_key = ?', [scopeId, key]) : null
-}
-
-export function saveCatalogCheckpoint(userDataDirectory: string, checkpointKey: unknown, payload: unknown) {
-  const target = db(userDataDirectory)
-  const key = normalizeCatalogCheckpointKey(checkpointKey)
-  const scopeId = catalogCheckpointScope(target)
-  serializePayload(payload)
-  const updatedAt = new Date().toISOString()
-  runTransaction(target, () => {
-    target.prepare(`
-      INSERT INTO catalog_checkpoints (scope_id, checkpoint_key, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(scope_id, checkpoint_key) DO UPDATE SET updated_at = excluded.updated_at
-    `).run(scopeId, key, updatedAt)
-    target.prepare('DELETE FROM catalog_checkpoint_values WHERE scope_id = ? AND checkpoint_key = ?').run(scopeId, key)
-    writeRelationalValues(target, 'catalog_checkpoint_values', ['scope_id', 'checkpoint_key'], [scopeId, key], payload)
-  })
-  return { saved: true as const, scopeId, updatedAt }
 }
 
 function gameCheckpointText(value: unknown, label: string, maximum: number): string
@@ -1148,7 +1118,7 @@ export function saveGameCheckpoint(userDataDirectory: string, payload: unknown) 
   const kind = input.kind === 'action' ? 'action' : input.kind === 'observation' ? 'observation' : undefined
   if (!kind) throw new Error('Invalid game checkpoint kind')
   const target = db(userDataDirectory)
-  const scopeId = catalogCheckpointScope(target)
+  const scopeId = gameCheckpointScope(target)
   const checkpointId = gameCheckpointText(input.checkpointId, 'Game checkpoint ID', 120)
   const observationId = gameCheckpointText(input.observationId, 'Observation ID', 120, true)
   const commandId = gameCheckpointText(input.commandId, 'Command ID', 120, true)
@@ -1167,7 +1137,7 @@ export function saveGameCheckpoint(userDataDirectory: string, payload: unknown) 
 
 export function listGameCheckpoints(userDataDirectory: string, limit: unknown = 20) {
   const target = db(userDataDirectory)
-  const scopeId = catalogCheckpointScope(target)
+  const scopeId = gameCheckpointScope(target)
   const boundedLimit = typeof limit === 'number' && Number.isInteger(limit) ? Math.max(1, Math.min(100, limit)) : 20
   return (target.prepare(`
     SELECT id, kind, checkpoint_id, observation_id, command_id, action, status, summary, created_at

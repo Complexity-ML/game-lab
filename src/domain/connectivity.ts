@@ -27,7 +27,7 @@ export function classifyConnectivityFailure(value: unknown, target: string): Con
       ...common,
       kind: 'offline',
       title: `No network · ${target} unreachable`,
-      detail: `GAME LAB cannot reach ${target} because no usable network route is available. Dataset health was not evaluated. Check Wi-Fi, Ethernet or VPN, then retry.`,
+      detail: `GAME LAB cannot reach ${target} because no usable network route is available. Game state was not evaluated. Check Wi-Fi, Ethernet or VPN, then retry.`,
       fingerprint: 'connectivity:offline',
     }
   }
@@ -36,7 +36,7 @@ export function classifyConnectivityFailure(value: unknown, target: string): Con
       ...common,
       kind: 'dns',
       title: `DNS failure · ${target} unreachable`,
-      detail: `GAME LAB cannot resolve ${target}. Dataset health was not evaluated. Check DNS, VPN and the configured hostname, then retry.`,
+      detail: `GAME LAB cannot resolve ${target}. Game state was not evaluated. Check DNS, VPN and the configured hostname, then retry.`,
       fingerprint: 'connectivity:dns',
     }
   }
@@ -45,7 +45,7 @@ export function classifyConnectivityFailure(value: unknown, target: string): Con
       ...common,
       kind: 'refused',
       title: `Connection refused · ${target}`,
-      detail: `${target} rejected the connection. Dataset health was not evaluated. Verify that the service is running, its port is reachable and the configured URL is correct.`,
+      detail: `${target} rejected the connection. Game state was not evaluated. Verify that the service is running, its port is reachable and the configured URL is correct.`,
       fingerprint: 'connectivity:refused',
     }
   }
@@ -54,7 +54,7 @@ export function classifyConnectivityFailure(value: unknown, target: string): Con
       ...common,
       kind: 'tls',
       title: `Secure connection failed · ${target}`,
-      detail: `GAME LAB could not establish a trusted TLS connection to ${target}. Dataset health was not evaluated. Verify the certificate chain, proxy and system clock.`,
+      detail: `GAME LAB could not establish a trusted TLS connection to ${target}. Game state was not evaluated. Verify the certificate chain, proxy and system clock.`,
       fingerprint: 'connectivity:tls',
     }
   }
@@ -63,7 +63,7 @@ export function classifyConnectivityFailure(value: unknown, target: string): Con
       ...common,
       kind: 'authentication',
       title: `Authentication failed · ${target}`,
-      detail: `${target} is reachable but rejected the credentials. Dataset health was not evaluated. Refresh the scoped token or account connection, then retry.`,
+      detail: `${target} is reachable but rejected the credentials. Game state was not evaluated. Refresh the account connection, then retry.`,
       fingerprint: 'connectivity:authentication',
     }
   }
@@ -72,7 +72,7 @@ export function classifyConnectivityFailure(value: unknown, target: string): Con
       ...common,
       kind: 'timeout',
       title: `Connection timed out · ${target}`,
-      detail: `${target} did not answer before the bounded timeout. Dataset health was not evaluated. This is collection-reliability evidence, not a dataset anomaly. Check the network and service health, then retry.`,
+      detail: `${target} did not answer before the bounded timeout. Game state was not evaluated. This is bridge-reliability evidence, not a gameplay anomaly. Check the network and service health, then retry.`,
       fingerprint: 'connectivity:timeout',
     }
   }

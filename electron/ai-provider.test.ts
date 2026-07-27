@@ -137,7 +137,7 @@ describe('OpenAI agent tool loop', () => {
           { type: 'function_call', call_id: 'call-validate', name: 'validate_plan', arguments: '{}' },
           { type: 'function_call', call_id: 'call-finish', name: 'finish_plan', arguments: JSON.stringify({
             title: 'Add profile memory',
-            summary: 'Store a compact reusable metadata profile.',
+            summary: 'Store a compact reusable game-state snapshot.',
             rationale: 'Avoid repeated schema reconstruction.',
             requires_human_review: false,
             confidence: 0.92,

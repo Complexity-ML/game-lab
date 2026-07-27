@@ -1,28 +1,40 @@
 import { describe, expect, it } from 'vitest'
+import type { GameBridgeStatus, GameObservation } from './game-bridge'
 import { ensureAutonomousSystemCards } from './autonomous-system'
-import { parseWorkerPolicy } from './worker-policy'
 
-describe('autonomous system bootstrap', () => {
-  it('starts with Controller, a real exploration Worker Node and Catalog Explorer', () => {
-    const system = ensureAutonomousSystemCards([])
-    const kinds = system.added.map((node) => node.data.kind)
-    const worker = system.added.find((node) => node.data.kind === 'worker')
+const observation: GameObservation = {
+  protocol: 'game-lab.control.v1',
+  observationId: 'observation-1',
+  checkpointId: 'checkpoint-1',
+  capturedAt: '2026-07-27T12:00:00.000Z',
+  sessionId: 'session-1',
+  player: { position: { x: 0, y: 64, z: 0 }, heading: 0, speed: 0, health: 20, armor: 0, inVehicle: false },
+  mission: { objective: 'Gather wood', stage: 'start', completed: false },
+  environment: { area: 'spawn', threatLevel: 'none' },
+  nearby: [],
+  gameState: { kind: 'minecraft', version: '1.21.6', dimension: 'overworld', food: 20, saturation: 5, experienceLevel: 0, inventory: [], nearbyBlocks: [] },
+}
 
-    expect(kinds).toEqual(['control', 'worker', 'explorer'])
-    expect(worker?.data.label).toBe('Catalog Audit Worker')
-    expect(parseWorkerPolicy(worker?.data.rule)).toMatchObject({
-      role: 'exploration',
-      batchSize: 8,
-      concurrency: 4,
-      retry: 'checkpoint',
-    })
+const status: GameBridgeStatus = {
+  mode: 'connected',
+  protocol: 'game-lab.control.v1',
+  endpoint: 'http://127.0.0.1:4317',
+  message: 'Connected',
+  game: 'Minecraft',
+}
+
+describe('autonomous game bootstrap', () => {
+  it('starts with the controller, Minecraft agent and Human Review', () => {
+    const system = ensureAutonomousSystemCards([], [], { observation, status })
+    expect(system.added.map((node) => node.data.kind)).toEqual(['control', 'agent', 'review'])
+    expect(system.agent.data.label).toBe('Minecraft Agent')
+    expect(system.addedEdges).toEqual([expect.objectContaining({ source: 'game-bridge-agent', target: 'game-bridge-review' })])
   })
 
-  it('adds the missing Worker Node to an existing controller/explorer workspace', () => {
-    const initial = ensureAutonomousSystemCards([]).added.filter((node) => node.data.kind !== 'worker')
-    const resumed = ensureAutonomousSystemCards(initial)
-
-    expect(resumed.added).toHaveLength(1)
-    expect(resumed.added[0]?.data.kind).toBe('worker')
+  it('does not duplicate existing system cards or edges', () => {
+    const initial = ensureAutonomousSystemCards([], [], { observation, status })
+    const resumed = ensureAutonomousSystemCards(initial.added, initial.addedEdges, { observation, status })
+    expect(resumed.added).toEqual([])
+    expect(resumed.addedEdges).toEqual([])
   })
 })

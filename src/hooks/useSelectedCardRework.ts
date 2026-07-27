@@ -4,11 +4,11 @@ import { buildCardReworkRequest } from '../domain/agent-context'
 import { materializeAiProposal } from '../domain/ai'
 import type { ActiveAiSource } from '../domain/ai'
 import { applyAtomicRunState, buildAtomicRunTrace, executePipelineAtomically, type AtomicPipelineRun } from '../domain/atomic-execution'
-import type { DataHubEvidence } from '../domain/datahub'
+import type { GameEvidence } from '../domain/game-evidence'
 import { applyProposal, type AgentProposal, type PipelineNode } from '../domain/pipeline'
 import { errorMessage, notifyError } from '../domain/toasts'
 import { findEquivalentVersion, graphFingerprint, graphsEquivalent, type PipelineVersion } from '../domain/versioning'
-import { repairMonitorWorkBranches, repairSensitiveOutputPaths } from '../validation/proposal-repair'
+import { repairMonitorWorkBranches } from '../validation/proposal-repair'
 import type { ValidationIssue } from '../validation/types'
 import { disconnectedAiStatus, disconnectedChatGPTStatus } from './useAiConnections'
 
@@ -39,11 +39,11 @@ export function useSelectedCardRework(options: {
       : options.selected
     if (!selected) return
     options.setContextMenu(undefined)
-    if (!window.dataLab) {
+    if (!window.gameLab) {
       options.setActivity('AI provider unavailable in web preview · launch the Electron application')
       return
     }
-    const [status, currentChatGPT] = await Promise.all([window.dataLab.getAiStatus().catch(() => disconnectedAiStatus), window.dataLab.getChatGPTStatus().catch(() => disconnectedChatGPTStatus)])
+    const [status, currentChatGPT] = await Promise.all([window.gameLab.getAiStatus().catch(() => disconnectedAiStatus), window.gameLab.getChatGPTStatus().catch(() => disconnectedChatGPTStatus)])
     const activeConnected = options.activeAiSource === 'chatgpt' ? currentChatGPT.connected : status.providers[options.activeAiSource].connected
     if (!activeConnected) {
       options.openAiSettings()
@@ -58,33 +58,37 @@ export function useSelectedCardRework(options: {
     const activeModel = options.activeAiSource === 'chatgpt' ? currentChatGPT.selectedModel ?? 'ChatGPT' : status.providers[options.activeAiSource].model
     options.setActivity(`${activeModel} is reviewing ${selected.data.label} with version context…`)
     try {
-      const source = selected.data.datahubUrn ? selected : options.nodes.find((node) => node.data.kind === 'source' && node.data.datahubUrn)
-      let evidenceEntries: DataHubEvidence[] = []
-      if (source?.data.datahubUrn) {
-        const audit = await window.dataLab.auditDataHubWithMcp(source.data.datahubUrn)
-        if (options.agentRunId.current !== runId) return
-        evidenceEntries = audit.reads.map((read) => ({ tool: read.name, urn: source.data.datahubUrn!, capturedAt: read.capturedAt, expiresAt: read.expiresAt, status: read.status, summary: read.summary, cached: read.cached, stale: read.stale }))
-      }
+      const observation = await window.gameLab.getGameObservation()
+      if (options.agentRunId.current !== runId) return
+      const evidenceEntries: GameEvidence[] = [{
+        tool: 'game_bridge.observation',
+        source: observation.observationId,
+        capturedAt: observation.capturedAt,
+        expiresAt: new Date(Date.parse(observation.capturedAt) + 60_000).toISOString(),
+        status: 'ok',
+        summary: `Checkpoint ${observation.checkpointId}: ${observation.mission.objective}; stage=${observation.mission.stage}; health=${observation.player.health}; nearby=${observation.nearby.length}.`,
+        cached: false,
+        stale: false,
+      }]
       const requestPayload = buildCardReworkRequest({
-        datahubEvidence: evidenceEntries,
+        runtimeEvidence: evidenceEntries,
         edges: options.edges,
         focusNodeId: selected.id,
         issues: options.issues,
         nodes: options.nodes,
         objective,
-        proposalMemory: await window.dataLab.listAgentProposalMemory(),
+        proposalMemory: await window.gameLab.listAgentProposalMemory(),
         responseLanguage: options.language === 'fr' ? 'French' : 'English',
         versions: options.versions,
       })
-      const response = options.activeAiSource === 'chatgpt' ? await window.dataLab.runChatGPTProposal(requestPayload) : await window.dataLab.runAiProposal(requestPayload)
+      const response = options.activeAiSource === 'chatgpt' ? await window.gameLab.runChatGPTProposal(requestPayload) : await window.gameLab.runAiProposal(requestPayload)
       if (options.agentRunId.current !== runId) return
       const nextProposal = materializeAiProposal(response, options.nodes, options.edges)
-      repairSensitiveOutputPaths(nextProposal, options.nodes, options.edges)
       repairMonitorWorkBranches(nextProposal, options.nodes, options.edges)
       nextProposal.runTrace = buildAtomicRunTrace(options.nodes, atomicRun)
       const preview = applyProposal(options.nodes, options.edges, nextProposal)
       const proposalGraphFingerprint = graphFingerprint(preview.nodes, preview.edges)
-      const rememberedProposal = await window.dataLab.rememberAgentProposal({
+      const rememberedProposal = await window.gameLab.rememberAgentProposal({
         graphFingerprint: proposalGraphFingerprint,
         baseGraphFingerprint: graphFingerprint(options.nodes, options.edges),
         source: 'card-rework',
@@ -98,7 +102,7 @@ export function useSelectedCardRework(options: {
       }
       const equivalentVersion = findEquivalentVersion(preview.nodes, preview.edges, options.versions)
       if (graphsEquivalent(options.nodes, options.edges, preview.nodes, preview.edges) || equivalentVersion) {
-        await window.dataLab.updateAgentProposalMemoryStatus(proposalGraphFingerprint, 'duplicate', equivalentVersion?.id).catch(() => undefined)
+        await window.gameLab.updateAgentProposalMemoryStatus(proposalGraphFingerprint, 'duplicate', equivalentVersion?.id).catch(() => undefined)
         options.setActivity(`Card proposal blocked as equivalent to ${equivalentVersion ? `${equivalentVersion.label} (${equivalentVersion.status ?? 'committed'})` : 'the current graph'} · no revision created`)
         return
       }
@@ -107,9 +111,9 @@ export function useSelectedCardRework(options: {
       options.setProposal(nextProposal)
       options.setProposalReviewOpen(true)
       const reviewVersionId = options.recordPendingReview(nextProposal)
-      await window.dataLab.updateAgentProposalMemoryStatus(proposalGraphFingerprint, 'pending-review', reviewVersionId).catch(() => undefined)
+      await window.gameLab.updateAgentProposalMemoryStatus(proposalGraphFingerprint, 'pending-review', reviewVersionId).catch(() => undefined)
       options.setActivity(`${response.model} proposed a card-level diff${nextProposal.requiresHumanReview ? ' · human review required' : ' · agent is confident'}`)
-      if (nextProposal.requiresHumanReview) void window.dataLab.notifyHumanReview({ cardLabel: selected.data.label, reason: nextProposal.summary, versionId: reviewVersionId })
+      if (nextProposal.requiresHumanReview) void window.gameLab.notifyHumanReview({ cardLabel: selected.data.label, reason: nextProposal.summary, versionId: reviewVersionId })
     } catch (error) {
       notifyError(error, 'Card analysis failed')
       if (options.agentRunId.current !== runId) return

@@ -1,4 +1,4 @@
-import { Bot, Database, GitCompareArrows, History, ListChecks, LoaderCircle, Send, ShieldCheck, Sparkles, Square, X } from 'lucide-react'
+import { Bot, Gamepad2, GitCompareArrows, History, ListChecks, LoaderCircle, Send, ShieldCheck, Sparkles, Square, X } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useLanguage } from '../../i18n'
 
@@ -8,7 +8,7 @@ interface AgentPromptProps {
   ariaLabel?: string
   busy: boolean
   connected: boolean
-  context: { ai?: string; cards: number; edges: number; versions: number; mcp: string; model: string }
+  context: { ai?: string; cards: number; edges: number; versions: number; game: string; model: string }
   placeholder?: string
   submitLabel?: string
   onOpenSettings(): void
@@ -49,7 +49,7 @@ export function AgentPrompt({ activity, agentLabel, ariaLabel, busy, connected, 
     {detailsOpen && <section aria-label="Agentic execution details" className="data-agent-details">
       <header><span><Sparkles size={14} /><strong>Agentic context</strong></span><button aria-label="Close agent details" onClick={() => setDetailsOpen(false)} type="button"><X size={13} /></button></header>
       <div className="agent-context-flow">
-        <span><Database size={14} /><strong>DataHub MCP</strong><small>{context.mcp}</small></span>
+        <span><Gamepad2 size={14} /><strong>Game Bridge</strong><small>{context.game}</small></span>
         <i>→</i>
         <span className={busy ? 'is-running' : ''}>{busy ? <LoaderCircle aria-hidden="true" className="agent-context-wheel" size={16} /> : <Bot size={14} />}<strong>AI provider</strong><small>{busy ? activity : context.ai ?? context.model}</small></span>
         <i>→</i>
@@ -77,7 +77,7 @@ export function AgentPrompt({ activity, agentLabel, ariaLabel, busy, connected, 
         rows={1}
         value={value}
       />
-      <div className="data-agent-prompt-context"><span><Sparkles size={11} />{agentLabel ?? t('agentLabel')}</span><small aria-live="polite">{connectionNotice || (connected ? `${context.model} · Review only · ${context.mcp}` : t('noAction'))}</small>{!connected && <button className="data-agent-connect" onClick={onOpenSettings} type="button">{t('connect')}</button>}</div>
+      <div className="data-agent-prompt-context"><span><Sparkles size={11} />{agentLabel ?? t('agentLabel')}</span><small aria-live="polite">{connectionNotice || (connected ? `${context.model} · Review only · ${context.game}` : t('noAction'))}</small>{!connected && <button className="data-agent-connect" onClick={onOpenSettings} type="button">{t('connect')}</button>}</div>
       <div className="data-agent-actions">
         {busy
           ? <button aria-label="Emergency stop agent" className="data-agent-send is-stop" onClick={onStop} title="Stop the current agent run immediately" type="button"><Square size={13} /></button>

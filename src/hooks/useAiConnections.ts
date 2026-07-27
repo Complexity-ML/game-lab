@@ -48,11 +48,11 @@ export function useAiConnections(reportActivity: (message: string) => void) {
   const sourceSelectionEpoch = useRef(0)
 
   useEffect(() => {
-    if (!window.dataLab) return
+    if (!window.gameLab) return
     void Promise.all([
-      window.dataLab.getAiStatus().catch(() => disconnectedAiStatus),
-      window.dataLab.getChatGPTStatus().catch(() => disconnectedChatGPTStatus),
-      window.dataLab.getActiveAiSource().catch(() => ({ source: 'openai' as ActiveAiSource })),
+      window.gameLab.getAiStatus().catch(() => disconnectedAiStatus),
+      window.gameLab.getChatGPTStatus().catch(() => disconnectedChatGPTStatus),
+      window.gameLab.getActiveAiSource().catch(() => ({ source: 'openai' as ActiveAiSource })),
     ]).then(async ([providerStatus, accountStatus, selection]) => {
       setAiStatus(providerStatus)
       setChatGPTStatus(accountStatus)
@@ -60,7 +60,7 @@ export function useAiConnections(reportActivity: (message: string) => void) {
       const selectedConnected = selection.source === 'chatgpt' ? accountStatus.connected : providerStatus.providers[selection.source].connected
       const source: ActiveAiSource = !selectedConnected && accountStatus.connected ? 'chatgpt' : selection.source
       setActiveAiSource(source)
-      if (source !== selection.source) await window.dataLab?.setActiveAiSource(source).catch(() => undefined)
+      if (source !== selection.source) await window.gameLab?.setActiveAiSource(source).catch(() => undefined)
     })
   }, [])
 
@@ -71,8 +71,8 @@ export function useAiConnections(reportActivity: (message: string) => void) {
   }), [activeAiSource, aiStatus, chatGPTStatus])
 
   const saveAiConnection = async (settings: Partial<AiSettings> & { apiKey?: string; clearKey?: boolean }) => {
-    if (!window.dataLab) throw new Error('AI settings require the Electron application')
-    const status = await window.dataLab.saveAiSettings(settings)
+    if (!window.gameLab) throw new Error('AI settings require the Electron application')
+    const status = await window.gameLab.saveAiSettings(settings)
     recordDiagnostic({ category: 'provider', action: 'settings.save', status: status.connected ? 'success' : 'warning', detail: { provider: status.selectedProvider, model: status.settings.model, credentialSource: status.credentialSource } })
     setAiStatus(status)
     reportActivity(status.connected ? `${status.settings.model} connection settings saved` : 'AI settings saved · API key still required')
@@ -80,16 +80,16 @@ export function useAiConnections(reportActivity: (message: string) => void) {
   }
 
   const testAiConnection = async () => {
-    if (!window.dataLab) throw new Error('AI connection requires the Electron application')
-    const status = await window.dataLab.testAiConnection()
+    if (!window.gameLab) throw new Error('AI connection requires the Electron application')
+    const status = await window.gameLab.testAiConnection()
     recordDiagnostic({ category: 'provider', action: 'connection.test', status: 'success', detail: { provider: status.selectedProvider, model: status.settings.model } })
     setAiStatus(status)
     reportActivity(`${sourceLabel(status.selectedProvider)} connected · ${status.settings.model} ready`)
   }
 
   const refreshAiModelCatalog = async (provider: AiSettings['provider']) => {
-    if (!window.dataLab) throw new Error('Model discovery requires the Electron application')
-    const status = await window.dataLab.refreshAiModelCatalog(provider)
+    if (!window.gameLab) throw new Error('Model discovery requires the Electron application')
+    const status = await window.gameLab.refreshAiModelCatalog(provider)
     recordDiagnostic({ category: 'provider', action: 'catalog.refresh', status: 'success', detail: { provider, modelCount: status.providers[provider].catalog.length } })
     setAiStatus(status)
     reportActivity(`${sourceLabel(provider)} model catalog refreshed · ${status.providers[provider].catalog.length} models`)
@@ -97,15 +97,15 @@ export function useAiConnections(reportActivity: (message: string) => void) {
   }
 
   const connectChatGPT = async () => {
-    if (!window.dataLab) throw new Error('ChatGPT connection requires Electron')
+    if (!window.gameLab) throw new Error('ChatGPT connection requires Electron')
     sourceSelectionEpoch.current += 1
     setChatGPTConnecting(true)
     recordDiagnostic({ category: 'provider', action: 'chatgpt.connect.start', status: 'info', detail: { source: 'account' } })
     reportActivity('ChatGPT sign-in opened · waiting for browser approval…')
     try {
       const status = await observeChatGPTConnection(
-        () => window.dataLab!.connectChatGPT(),
-        () => window.dataLab!.getChatGPTStatus(),
+        () => window.gameLab!.connectChatGPT(),
+        () => window.gameLab!.getChatGPTStatus(),
         (observed, pollCount) => {
           setChatGPTStatus(observed)
           if (pollCount === 2) {
@@ -120,7 +120,7 @@ export function useAiConnections(reportActivity: (message: string) => void) {
       recordDiagnostic({ category: 'provider', action: 'chatgpt.connect', status: status.connected ? 'success' : 'warning', detail: { model: status.selectedModel } })
       setChatGPTStatus(status)
       if (status.connected) {
-        const selection = await window.dataLab.setActiveAiSource('chatgpt')
+        const selection = await window.gameLab.setActiveAiSource('chatgpt')
         setActiveAiSource(selection.source)
       }
       reportActivity(status.connected ? `ChatGPT connected and active · ${status.selectedModel ?? 'default model'}` : 'ChatGPT sign-in was not completed')
@@ -130,14 +130,14 @@ export function useAiConnections(reportActivity: (message: string) => void) {
   }
 
   const cancelChatGPTLogin = async () => {
-    if (!window.dataLab) throw new Error('ChatGPT connection requires Electron')
-    await window.dataLab.cancelChatGPTLogin()
+    if (!window.gameLab) throw new Error('ChatGPT connection requires Electron')
+    await window.gameLab.cancelChatGPTLogin()
     setChatGPTConnecting(false)
-    const status = await window.dataLab.getChatGPTStatus().catch(() => disconnectedChatGPTStatus)
+    const status = await window.gameLab.getChatGPTStatus().catch(() => disconnectedChatGPTStatus)
     setChatGPTStatus(status)
     if (status.connected) {
       sourceSelectionEpoch.current += 1
-      const selection = await window.dataLab.setActiveAiSource('chatgpt')
+      const selection = await window.gameLab.setActiveAiSource('chatgpt')
       setActiveAiSource(selection.source)
       reportActivity(`ChatGPT connected and active · ${status.selectedModel ?? 'default model'}`)
     } else {
@@ -146,22 +146,22 @@ export function useAiConnections(reportActivity: (message: string) => void) {
   }
 
   const disconnectChatGPT = async () => {
-    if (!window.dataLab) throw new Error('ChatGPT connection requires Electron')
-    setChatGPTStatus(await window.dataLab.disconnectChatGPT())
+    if (!window.gameLab) throw new Error('ChatGPT connection requires Electron')
+    setChatGPTStatus(await window.gameLab.disconnectChatGPT())
     reportActivity('ChatGPT account disconnected from GAME LAB')
   }
 
   const configureChatGPT = async (configuration: { model: string; effort: string }) => {
-    if (!window.dataLab) throw new Error('ChatGPT configuration requires Electron')
-    setChatGPTStatus(await window.dataLab.configureChatGPT(configuration))
+    if (!window.gameLab) throw new Error('ChatGPT configuration requires Electron')
+    setChatGPTStatus(await window.gameLab.configureChatGPT(configuration))
   }
 
   const selectActiveAgentSource = async (source: ActiveAiSource) => {
-    if (!window.dataLab) throw new Error('Active agent selection requires the Electron application')
+    if (!window.gameLab) throw new Error('Active agent selection requires the Electron application')
     sourceSelectionEpoch.current += 1
-    const selected = await window.dataLab.setActiveAiSource(source)
+    const selected = await window.gameLab.setActiveAiSource(source)
     setActiveAiSource(selected.source)
-    if (source !== 'chatgpt') setAiStatus(await window.dataLab.getAiStatus())
+    if (source !== 'chatgpt') setAiStatus(await window.gameLab.getAiStatus())
     reportActivity(`${sourceLabel(source)} selected as the active agent source`)
   }
 

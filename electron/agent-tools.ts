@@ -1,4 +1,4 @@
-import { proposalCardCompatibility, queryCheckRuleError, riskAssessmentRuleError, validateProposal, workerPolicyError, type ProposalCardKind, type ValidatedProposal, type ValidatedProposalAction } from './proposal-contract.js'
+import { gameQueryRuleError, proposalCardCompatibility, riskAssessmentRuleError, validateProposal, workerPolicyError, worldExplorerRuleError, type ProposalCardKind, type ValidatedProposal, type ValidatedProposalAction } from './proposal-contract.js'
 
 type JsonRecord = Record<string, unknown>
 type ToolStatus = 'read' | 'accepted' | 'rejected'
@@ -29,16 +29,9 @@ export const agentToolDefinitions = [
   {
     type: 'function',
     name: 'inspect_graph',
-    description: 'Read the current graph, terminal catalog checkpoint summaries and every action already queued in this planning turn. Call before changing an existing graph.',
+    description: 'Read the current private-game graph, Game Bridge runtime and every action already queued in this planning turn. Call before changing an existing graph.',
     strict: true,
     parameters: objectSchema({ node_ids: { type: 'array', items: { type: 'string' }, maxItems: 24 } }),
-  },
-  {
-    type: 'function',
-    name: 'read_catalog_checkpoint',
-    description: 'Read one bounded host-owned Catalog Explorer checkpoint, its coverage, evidence-backed issues and recommended versioned source. A complete checkpoint is terminal and must not be restarted.',
-    strict: true,
-    parameters: objectSchema({ explorer_id: nullableText }),
   },
   {
     type: 'function',
@@ -153,17 +146,17 @@ interface CardPlanningContract {
 const cardRoles: Record<ProposalCardKind, CardPlanningContract> = {
   control: {
     role: 'Persist the autonomous objective and player resume/monitor policy.',
-    activation: 'Use exactly one host-owned controller whenever Player is enabled; never connect it to lineage.',
+    activation: 'Use exactly one host-owned controller whenever Player is enabled; never connect it to the action path.',
     completion: 'Objective, on_review and on_idle policies are versioned.',
   },
   explorer: {
-    role: 'Discover governed sources through one host-owned focused or catalog-wide sidecar.',
-    activation: 'Use when no source is bound or an explicit refresh/new monitor event reopens discovery.',
-    completion: 'A source is selected or a versioned terminal catalog checkpoint is complete.',
+    role: 'Inspect the bounded nearby world from structured Game Bridge observations.',
+    activation: 'Use when the mission needs nearby blocks, entities or locations from the current checkpoint.',
+    completion: 'The relevant world facts are summarized without inventing coordinates or entities.',
   },
   worker: {
     role: 'Process deterministic independent work in bounded branch-only batches.',
-    activation: 'Use only for two or more independent catalog, incident, risk or patch work items.',
+    activation: 'Use only for two or more independent mission, incident, risk or action work items.',
     completion: 'Every item completed, failed with evidence or checkpointed before atomic merge.',
   },
   query: {
@@ -248,11 +241,11 @@ const cardRoles: Record<ProposalCardKind, CardPlanningContract> = {
   },
   validation: {
     role: 'Run applicable atomic contracts and post-conditions.',
-    activation: 'Use after any patch, transform, decision or review and before governed Output.',
+    activation: 'Use after any patch, transform, decision or review and before Game Result.',
     completion: 'All atoms pass or blockers identify the exact repairable contract.',
   },
   output: {
-    role: 'Emit a validated governed artifact, decision or query receipt and its lineage.',
+    role: 'Emit a validated mission result, decision or action receipt.',
     activation: 'Use as the terminal result of a useful validated branch.',
     completion: 'Result references its validated inputs, version and review state and may feed a monitor.',
   },
@@ -344,13 +337,13 @@ export class AgentToolSession {
 
   private normalizedRule(kind: ProposalCardKind, value: unknown): string | null {
     const supplied = text(value, 2_000)
-    if (kind === 'control') return supplied ?? 'objective=maintain governed graph | mode=autonomous | on_review=checkpoint_and_resume | on_idle=monitor'
+    if (kind === 'control') return supplied ?? 'objective=maintain reviewed game graph | mode=autonomous | on_review=checkpoint_and_resume | on_idle=monitor'
     if (kind === 'review') return supplied ?? 'checkpoint=branch | on_approve=resume_next_iteration | on_reject=repair_loop'
     if (kind === 'parallel') return supplied ?? 'max_concurrency=3 | context=branch_only | merge=atomic'
-    if (kind === 'explorer') return supplied ?? 'scope=all_datasets | batch_size=8 | audit_concurrency=4 | cache=prefer | checkpoint=versioned | resume=true'
+    if (kind === 'explorer') return supplied ?? 'scope=nearby_world | checkpoint=versioned | resume=true'
     if (kind === 'worker') return supplied ?? 'role=generic | batch_size=4 | max_concurrency=4 | retry=checkpoint | context=branch_only | merge=atomic'
-    if (kind === 'query') return supplied ?? 'connector=datahub | protocol=graphql | registry=connector_manifest | operation=profile.read | mode=read_only | variables=host_validated | timeout_ms=8000 | review=not_required | dry_run=not_applicable | rollback=not_applicable | response=bounded_aggregate_profile'
-    if (kind === 'risk') return supplied ?? 'scope=downstream_assets | risk_domain=general | risk_type=none | severity=unknown | confidence=0 | evidence=unavailable | affected_assets=0 | action=read_versioned_lineage'
+    if (kind === 'query') return supplied ?? 'source=game_bridge | operation=observation.read | mode=read_only | timeout_ms=8000'
+    if (kind === 'risk') return supplied ?? 'scope=private_game | risk_domain=general | risk_type=none | severity=unknown | confidence=0 | evidence=unavailable | affected_assets=0 | action=read_fresh_game_observation'
     if (kind === 'monitor') {
       let rule = supplied ?? ''
       const seen = new Set<string>()
@@ -359,7 +352,7 @@ export class AgentToolSession {
           ? 'cooldown'
           : /^max_iterations\s*=/i.test(clause)
             ? 'max_iterations'
-            : /^on_change\(metadata_fingerprint\)/i.test(clause)
+            : /^on_change[=(](?:game_checkpoint|game_checkpoint\))/i.test(clause)
               ? 'on_change'
               : clause
         if (seen.has(key)) return false
@@ -367,7 +360,7 @@ export class AgentToolSession {
         return true
       }).join(' | ')
       const clauses: string[] = []
-      if (!/on_change\(metadata_fingerprint\)/i.test(rule)) clauses.push('on_change(metadata_fingerprint)')
+      if (!/on_change[=(](?:game_checkpoint|game_checkpoint\))/i.test(rule)) clauses.push('on_change=game_checkpoint')
       if (!/cooldown\s*=\s*\d+\s*(?:s|m|h)?\b/i.test(rule)) clauses.push('cooldown=60s')
       if (!/max_iterations=\d+/i.test(rule)) clauses.push('max_iterations=10')
       if (clauses.length) rule = [rule, ...clauses].filter(Boolean).join(' | ')
@@ -402,13 +395,13 @@ export class AgentToolSession {
           })),
           connection_policy: {
             sidecars: ['control', 'explorer'],
-            lineage_start: 'source',
+            evidence_start: 'server, agent or source',
             feedback: 'output.feedback -> monitor',
           },
-          catalog_policy: {
-            complete_is_terminal: true,
-            repair: 'read_catalog_checkpoint -> restore recommended_source_urn -> inspect only that source',
-            reopen_only_on: ['explicit_refresh', 'new_monitor_evidence'],
+          game_policy: {
+            checkpoint_bound_actions: true,
+            review_before_material_action: true,
+            private_servers_only: true,
           },
         })
       }
@@ -423,36 +416,7 @@ export class AgentToolSession {
           source_scope: record(record(this.payload).sourceScope),
           autonomy_policy: record(record(this.payload).autonomyPolicy),
           game_runtime: record(record(this.payload).gameRuntime),
-          catalog_checkpoints: (Array.isArray(record(this.payload).catalogCheckpoints)
-            ? record(this.payload).catalogCheckpoints as unknown[]
-            : []).map(record).map((checkpoint) => ({
-              explorerId: checkpoint.explorerId,
-              state: checkpoint.state,
-              inspected: checkpoint.inspected,
-              total: checkpoint.total,
-              terminal: checkpoint.terminal,
-              recommendedSourceUrn: checkpoint.recommendedSourceUrn,
-              restartPolicy: checkpoint.restartPolicy,
-            })),
           queued_actions: this.actions,
-        })
-      }
-      if (tool === 'read_catalog_checkpoint') {
-        const root = record(this.payload)
-        const checkpoints = Array.isArray(root.catalogCheckpoints) ? root.catalogCheckpoints.map(record) : []
-        const explorerId = text(args.explorer_id, 120)
-        const selected = explorerId
-          ? checkpoints.filter((checkpoint) => checkpoint.explorerId === explorerId)
-          : checkpoints
-        return this.result(tool, 'read', `${selected.length} bounded catalog checkpoint(s) inspected`, {
-          checkpoints: selected.slice(0, 4),
-          policy: {
-            complete_is_terminal: true,
-            must_not_restart_complete_checkpoint: true,
-            repair: 'Restore recommendedSourceUrn from version memory and inspect only that source before repairing the rejected diff.',
-            reopen_only_on: ['explicit_refresh', 'new_monitor_evidence'],
-            raw_rows_exposed: false,
-          },
         })
       }
       if (tool === 'inspect_incident_context') {
@@ -479,11 +443,15 @@ export class AgentToolSession {
           if (error) throw new Error(error)
         }
         if (kind === 'query') {
-          const error = queryCheckRuleError(rule)
+          const error = gameQueryRuleError(rule)
           if (error) throw new Error(error)
         }
-        if (kind === 'monitor' && (!rule?.includes('on_change(metadata_fingerprint)') || !rule.includes('cooldown=') || !rule.includes('max_iterations='))) {
-          throw new Error('Live Monitor requires on_change(metadata_fingerprint), cooldown and max_iterations')
+        if (kind === 'explorer') {
+          const error = worldExplorerRuleError(rule)
+          if (error) throw new Error(error)
+        }
+        if (kind === 'monitor' && (!rule?.includes('on_change=game_checkpoint') || !rule.includes('cooldown=') || !rule.includes('max_iterations='))) {
+          throw new Error('Live Monitor requires on_change=game_checkpoint, cooldown and max_iterations')
         }
         if (kind === 'parallel' && (!rule?.includes('context=branch_only') || !rule.includes('merge=atomic'))) {
           throw new Error('Parallel Agents requires context=branch_only and merge=atomic')
@@ -529,7 +497,11 @@ export class AgentToolSession {
           if (error) throw new Error(error)
         }
         if (effectiveKind === 'query' && suppliedRule) {
-          const error = queryCheckRuleError(rule)
+          const error = gameQueryRuleError(rule)
+          if (error) throw new Error(error)
+        }
+        if (effectiveKind === 'explorer' && suppliedRule) {
+          const error = worldExplorerRuleError(rule)
           if (error) throw new Error(error)
         }
         if (!kind && !label && !description && !owner && !rule) throw new Error('update_card requires at least one changed field')
@@ -634,14 +606,9 @@ export class AgentToolSession {
       if (tool === 'validate_plan') {
         const proposal = validateProposal(proposalWith(this.actions, { requires_human_review: this.includesReview() }), this.payload)
         this.validatedActionCount = proposal.actions.length
-        const completeCheckpoints = (Array.isArray(record(this.payload).catalogCheckpoints)
-          ? record(this.payload).catalogCheckpoints as unknown[]
-          : []).map(record).filter((checkpoint) => checkpoint.terminal === true)
         return this.result(tool, 'read', `${proposal.actions.length} queued action(s) satisfy the proposal contract`, {
           action_count: proposal.actions.length,
-          catalog_checkpoint_policy: completeCheckpoints.length
-            ? 'Complete checkpoint is terminal; this plan must repair from its recommended source without restarting catalog discovery.'
-            : 'Resume only remaining bounded catalog work.',
+          game_checkpoint_policy: 'Every gameplay action must match the fresh Game Bridge checkpoint and remain behind Human Review.',
         })
       }
       if (tool === 'finish_plan') {

@@ -1,7 +1,7 @@
-export type RiskType = 'data' | 'collection' | 'none'
+export type RiskType = 'operational' | 'safety' | 'observation' | 'none'
 export type RiskSeverity = 'critical' | 'high' | 'medium' | 'low' | 'unknown'
 export type RiskEvidenceState = 'fresh' | 'stale' | 'unavailable'
-export type RiskDomain = 'general' | 'data' | 'ml' | 'analytics' | 'privacy' | 'governance' | 'security' | 'reliability'
+export type RiskDomain = 'general' | 'gameplay' | 'world' | 'player' | 'mission' | 'performance' | 'security' | 'reliability'
 
 export interface RiskAssessmentContext {
   scope: string
@@ -16,10 +16,10 @@ export interface RiskAssessmentContext {
   complete: boolean
 }
 
-const riskTypes = new Set<RiskType>(['data', 'collection', 'none'])
+const riskTypes = new Set<RiskType>(['operational', 'safety', 'observation', 'none'])
 const severities = new Set<RiskSeverity>(['critical', 'high', 'medium', 'low', 'unknown'])
 const evidenceStates = new Set<RiskEvidenceState>(['fresh', 'stale', 'unavailable'])
-export const riskDomains: RiskDomain[] = ['general', 'data', 'ml', 'analytics', 'privacy', 'governance', 'security', 'reliability']
+export const riskDomains: RiskDomain[] = ['general', 'gameplay', 'world', 'player', 'mission', 'performance', 'security', 'reliability']
 const domainSet = new Set(riskDomains)
 
 function clauses(rule: string | undefined) {
@@ -31,13 +31,13 @@ function clauses(rule: string | undefined) {
 
 export function riskDomainFromText(value: string | undefined): RiskDomain {
   const normalized = (value ?? '').toLowerCase().replace(/[_./:-]+/g, ' ')
-  if (/\b(model|feature|training|serving|prediction|inference|deployment|drift|retrain|ml)\b/.test(normalized)) return 'ml'
-  if (/\b(pii|privacy|personal|sensitive|gdpr|consent|mask|tokeni[sz])\b/.test(normalized)) return 'privacy'
+  if (/\b(mission|objective|stage|checkpoint|quest)\b/.test(normalized)) return 'mission'
+  if (/\b(player|health|armor|food|inventory|experience)\b/.test(normalized)) return 'player'
+  if (/\b(world|blocks?|dimensions?|weather|areas?|entities?)\b/.test(normalized)) return 'world'
+  if (/\b(gameplay|action|craft|mine|place|attack|navigate)\b/.test(normalized)) return 'gameplay'
+  if (/\b(latency|cpu|memory|tick|fps|performance|resource)\b/.test(normalized)) return 'performance'
   if (/\b(access|secret|credential|security|permission|encrypt)\b/.test(normalized)) return 'security'
-  if (/\b(owner|ownership|tag|glossary|governance|policy|steward)\b/.test(normalized)) return 'governance'
-  if (/\b(dashboard|metric|semantic|analytics|report|bi)\b/.test(normalized)) return 'analytics'
-  if (/\b(connector|collection|timeout|network|mcp|graphql|availability|reliability)\b/.test(normalized)) return 'reliability'
-  if (/\b(dataset|schema|column|quality|freshness|lineage|data)\b/.test(normalized)) return 'data'
+  if (/\b(bridge|observation|timeout|network|availability|reliability)\b/.test(normalized)) return 'reliability'
   return 'general'
 }
 
@@ -72,4 +72,4 @@ export function parseRiskAssessmentRule(rule: string | undefined): RiskAssessmen
   return result
 }
 
-export const defaultRiskAssessmentRule = 'scope=downstream_assets | risk_domain=general | risk_type=none | severity=unknown | confidence=0 | evidence=unavailable | affected_assets=0 | action=read_versioned_lineage'
+export const defaultRiskAssessmentRule = 'scope=private_game | risk_domain=general | risk_type=none | severity=unknown | confidence=0 | evidence=unavailable | affected_assets=0 | action=read_fresh_game_observation'

@@ -25,10 +25,10 @@ const allowedTargets: Record<CardKind, readonly CardKind[]> = {
 }
 
 export function cardConnectionError(source: CardKind, target: CardKind, sourceHandle?: string | null): string | undefined {
-  if (source === 'control' || target === 'control') return 'GAME LAB Control is a global policy and cannot enter lineage'
-  if (source === 'explorer' || target === 'explorer') return 'Catalog Explorer is a host-owned sidecar and cannot enter lineage'
+  if (source === 'control' || target === 'control') return 'GAME LAB Control is a global policy and cannot enter the action path'
+  if (source === 'explorer' || target === 'explorer') return 'World Explorer is a host-owned sidecar and cannot enter the action path'
   if (target === 'server') return 'Game Server must begin an operational path'
-  if (target === 'source') return 'Data Source must begin a lineage path'
+  if (target === 'source') return 'Game Evidence must begin an evidence path'
   if (source === 'output') {
     return sourceHandle === 'feedback' && target === 'monitor'
       ? undefined

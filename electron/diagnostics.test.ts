@@ -9,7 +9,7 @@ afterEach(() => { if (directory) rmSync(directory, { force: true, recursive: tru
 
 describe('privacy-safe diagnostics', () => {
   it('redacts credentials, authorization headers and sensitive prompts recursively', () => {
-    const sanitized = sanitizeDiagnosticValue({ authorization: 'Bearer abc.def', apiKey: 'sk_secretvalue', nested: { url: 'https://example.test?token=private', prompt: 'private catalog prompt', sensitive: true } }) as Record<string, unknown>
+    const sanitized = sanitizeDiagnosticValue({ authorization: 'Bearer abc.def', apiKey: 'sk_secretvalue', nested: { url: 'https://example.test?token=private', prompt: 'private game prompt', sensitive: true } }) as Record<string, unknown>
     expect(sanitized.authorization).toBe('[REDACTED]')
     expect(sanitized.apiKey).toBe('[REDACTED]')
     expect((sanitized.nested as Record<string, unknown>).url).toContain('[REDACTED]')
@@ -18,7 +18,7 @@ describe('privacy-safe diagnostics', () => {
 
   it('bounds retention and exports a local-only sanitized bundle', () => {
     directory = mkdtempSync(join(tmpdir(), 'game-lab-diagnostics-'))
-    for (let index = 0; index < 520; index += 1) recordDiagnosticEvent(directory, { category: 'mcp', action: 'context.read', status: 'success', detail: { index, token: `secret-${index}` } })
+    for (let index = 0; index < 520; index += 1) recordDiagnosticEvent(directory, { category: 'bridge', action: 'observation.read', status: 'success', detail: { index, token: `secret-${index}` } })
     const bundle = exportDiagnosticBundle(directory)
     expect(bundle.events).toHaveLength(500)
     expect(bundle.telemetryEnabled).toBe(false)
@@ -31,7 +31,7 @@ describe('privacy-safe diagnostics', () => {
     expect(loadDiagnosticSettings(directory)).toEqual({ enabled: true, level: 'all', retentionDays: 7, maximumEvents: 500 })
     saveDiagnosticSettings(directory, { enabled: true, level: 'warnings', retentionDays: 14, maximumEvents: 100 })
     recordDiagnosticEvent(directory, { category: 'workspace', action: 'draft.saved', status: 'success' })
-    recordDiagnosticEvent(directory, { category: 'mcp', action: 'connection.failed', status: 'error' })
+    recordDiagnosticEvent(directory, { category: 'bridge', action: 'connection.failed', status: 'error' })
     const bundle = exportDiagnosticBundle(directory)
     expect(bundle.settings).toEqual({ enabled: true, level: 'warnings', retentionDays: 14, maximumEvents: 100 })
     expect(bundle.events.map((event) => event.action)).toEqual(['connection.failed'])

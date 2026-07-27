@@ -27,7 +27,7 @@ export function createLargeGraphFixture(nodeCount: number = graphPerformanceTarg
       id: `perf-${index}`,
       type: 'pipeline',
       position: { x: 80 + (index % 20) * 270, y: 80 + Math.floor(index / 20) * 165 },
-      data: { kind, label: `${cardLabels[kind]} ${index + 1}`, description: 'Synthetic performance fixture', owner: 'Performance lab', status: 'healthy', schema: [] },
+      data: { kind, label: `${cardLabels[kind]} ${index + 1}`, description: 'Synthetic performance fixture', owner: 'Performance harness', status: 'healthy', schema: [] },
     }
   })
   const edges: Edge[] = []

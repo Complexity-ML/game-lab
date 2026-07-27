@@ -1,5 +1,4 @@
-import { Check, DatabaseZap, GitCompareArrows, LoaderCircle, ShieldCheck, Sparkles, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Check, FileSearch, GitCompareArrows, LoaderCircle, ShieldCheck, Sparkles, X } from 'lucide-react'
 import type { AgentProposal } from '../domain/pipeline'
 import { ActionButton } from './shared/ActionButton'
 import { AgentPrompt } from './shared/AgentPrompt'
@@ -9,7 +8,7 @@ export interface ReviewAssistantProps {
   answer?: { summary: string; rationale: string; evidence: string[]; model: string }
   busy: boolean
   connected: boolean
-  context: { ai?: string; cards: number; edges: number; versions: number; mcp: string; model: string }
+  context: { ai?: string; cards: number; edges: number; versions: number; game: string; model: string }
   onAsk(question: string): void
   onOpenSettings(): void
   onStop(): void
@@ -19,18 +18,13 @@ interface ReviewPanelProps {
   assistant?: ReviewAssistantProps
   applying?: boolean
   proposal: AgentProposal
-  relatedAssets: string[]
   revisionId?: string
-  writebackAvailable: boolean
-  onApply(writebackRequested: boolean): void
+  onApply(): void
   onDiscard(): void
   onClose(): void
 }
 
-export function ReviewPanel({ applying = false, assistant, proposal, relatedAssets, revisionId, writebackAvailable, onApply, onClose, onDiscard }: ReviewPanelProps) {
-  const [writebackRequested, setWritebackRequested] = useState(false)
-  useEffect(() => setWritebackRequested(false), [proposal.title, revisionId])
-
+export function ReviewPanel({ applying = false, assistant, proposal, revisionId, onApply, onClose, onDiscard }: ReviewPanelProps) {
   return <section className="review-panel">
     <div className="review-heading">
       <span><Sparkles size={16} /></span>
@@ -78,8 +72,8 @@ export function ReviewPanel({ applying = false, assistant, proposal, relatedAsse
         </section> : null}
 
         <section className="review-section">
-          <h3><DatabaseZap size={15} /> Connector evidence read</h3>
-          <ol>{proposal.datahubReads.map((item) => <li key={item}><code>{item}</code></li>)}</ol>
+          <h3><FileSearch size={15} /> Game evidence read</h3>
+          <ol>{proposal.evidenceReads.map((item) => <li key={item}><code>{item}</code></li>)}</ol>
         </section>
       </div>
 
@@ -97,33 +91,13 @@ export function ReviewPanel({ applying = false, assistant, proposal, relatedAsse
           <p>{proposal.writeback}</p>
         </section>
 
-        <section className="review-section datahub-writeback-review">
-          <h3><DatabaseZap size={15} /> Optional DataHub write-back</h3>
-          {writebackAvailable && revisionId ? <>
-            <label className="writeback-approval-toggle">
-              <input checked={writebackRequested} onChange={(event) => setWritebackRequested(event.target.checked)} type="checkbox" />
-              <span><strong>Also publish this approved Decision to DataHub</strong><small>This is an external mutation and is never selected automatically.</small></span>
-            </label>
-            {writebackRequested && <div className="writeback-mutation-preview" role="region" aria-label="DataHub mutation preview">
-              <strong>Exact mutation preview</strong>
-              <dl>
-                <div><dt>Operation</dt><dd><code>Governed DataHub Decision write-back</code></dd></div>
-                <div><dt>Type</dt><dd><code>Decision</code></dd></div>
-                <div><dt>Title</dt><dd>GAME LAB · {proposal.title}</dd></div>
-                <div><dt>Revision</dt><dd><code>{revisionId}</code></dd></div>
-                <div><dt>Author</dt><dd>GAME LAB operator</dd></div>
-                <div><dt>Rationale</dt><dd>{proposal.rationale}</dd></div>
-                <div><dt>Related assets</dt><dd>{relatedAssets.length ? relatedAssets.join(', ') : 'None bound'}</dd></div>
-              </dl>
-            </div>}
-          </> : <p className="writeback-unavailable">Disabled by default. Connect DataHub and explicitly enable governed write-back in Settings to make this option available.</p>}
-        </section>
+        {revisionId && <section className="review-section"><h3><ShieldCheck size={15} /> Local review checkpoint</h3><p><code>{revisionId}</code></p><small>Approval commits the graph locally, then sends only explicitly reviewed allowlisted actions through the Game Bridge.</small></section>}
       </div>
     </div>
 
     <footer className="review-actions">
       <ActionButton disabled={applying} icon={<X size={15} />} onClick={onDiscard} variant="secondary">Reject</ActionButton>
-      <ActionButton aria-busy={applying} disabled={applying} icon={applying ? <LoaderCircle className="agent-context-wheel" size={15} /> : <Check size={15} />} onClick={() => onApply(writebackRequested)} variant="primary">{applying ? 'Applying change…' : 'Approve change'}</ActionButton>
+      <ActionButton aria-busy={applying} disabled={applying} icon={applying ? <LoaderCircle className="agent-context-wheel" size={15} /> : <Check size={15} />} onClick={onApply} variant="primary">{applying ? 'Applying change…' : 'Approve change'}</ActionButton>
     </footer>
   </section>
 }

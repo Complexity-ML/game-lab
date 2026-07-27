@@ -152,7 +152,7 @@ export function routeElasticCable(options: ElasticRouteOptions): ElasticRoute {
     obstacle.id === options.sourceId || obstacle.id === options.targetId
   ))
   // A turnaround and a feedback loop must also clear the endpoint card
-  // bodies. Handles are vertically centred and SAM profile/explorer cards can
+  // bodies. Handles are vertically centred and telemetry/explorer cards can
   // be substantially taller than the original fixed estimate.
   const routeObstacles = options.feedback || needsTurnaround
     ? [...spanningObstacles, ...endpointObstacles]

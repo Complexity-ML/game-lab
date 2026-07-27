@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppUpdateStatus } from '../domain/updates'
 import { useAppUpdates } from './useAppUpdates'
 
-afterEach(() => { delete window.dataLab })
+afterEach(() => { delete window.gameLab })
 
 const ready: AppUpdateStatus = {
   currentVersion: '0.1.0', channel: 'stable', phase: 'ready', currentSignatureVerified: true,
@@ -17,11 +17,11 @@ describe('application update renderer bridge', () => {
   it('loads status, subscribes and changes channel only through explicit user action', async () => {
     const setAppUpdateChannel = vi.fn(async () => ({ ...ready, channel: 'main' as const }))
     let listener: ((status: AppUpdateStatus) => void) | undefined
-    window.dataLab = {
+    window.gameLab = {
       getAppUpdateStatus: vi.fn(async () => ready),
       setAppUpdateChannel,
       onAppUpdateStatusChanged: vi.fn((callback) => { listener = callback; return () => { listener = undefined } }),
-    } as unknown as NonNullable<typeof window.dataLab>
+    } as unknown as NonNullable<typeof window.gameLab>
 
     const report = vi.fn()
     const { result } = renderHook(() => useAppUpdates(report))

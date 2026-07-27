@@ -3,17 +3,17 @@ import { atomicBlockerFingerprint, maximumAtomicRepairAttempts, planAtomicRepair
 
 describe('bounded atomic repair', () => {
   it('normalizes blocker fingerprints so equivalent invalid diffs deduplicate', () => {
-    expect(atomicBlockerFingerprint(['pii-output', 'orphan-output', 'pii-output']))
-      .toBe('orphan-output|pii-output')
+    expect(atomicBlockerFingerprint(['unsafe-action', 'orphan-output', 'unsafe-action']))
+      .toBe('orphan-output|unsafe-action')
   })
 
   it('allows one repair turn and then settles without another retry', () => {
-    const first = planAtomicRepair(undefined, 7, ['pii-output', 'orphan-output'])
+    const first = planAtomicRepair(undefined, 7, ['unsafe-action', 'orphan-output'])
     expect(first.shouldRetry).toBe(true)
     expect(first.exhausted).toBe(false)
     expect(first.nextState.attempts).toBe(maximumAtomicRepairAttempts)
 
-    const repeated = planAtomicRepair(first.nextState, 7, ['orphan-output', 'pii-output'])
+    const repeated = planAtomicRepair(first.nextState, 7, ['orphan-output', 'unsafe-action'])
     expect(repeated.shouldRetry).toBe(false)
     expect(repeated.exhausted).toBe(true)
     expect(repeated.nextState.attempts).toBe(maximumAtomicRepairAttempts)

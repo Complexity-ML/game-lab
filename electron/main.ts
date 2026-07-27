@@ -1,11 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell, type MenuItemConstructorOptions } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getDataHubStatus, loadDatasetContext } from './datahub.js'
-import { auditDataHubWithMcp, closeDataHubMcp, connectDataHubMcp, getDataHubMcpConfigurationStatus, inspectDataHubAsset, invalidateDataHubContext, parseDataHubDecisionRequest, saveDataHubMcpSettings, searchDataHubAssets, writeDataHubDecision } from './datahub-mcp.js'
 import { cancelAiProposal, getAiStatus, refreshAiModelCatalog, runAiProposal, saveAiSettings, testAiConnection } from './ai-provider.js'
 import { ChatGPTAgentSession } from './chatgpt-session.js'
-import { archiveWorkspace, autosaveWorkspaceDraft, beginWorkspaceSession, clearIncidentEvents, closeWorkspaceDatabase, commitActiveWorkspace, createWorkspace, deleteWorkspace, duplicateWorkspace, listAgentProposalMemory, listGameCheckpoints, listIncidentEvents, loadAppSetting, loadCatalogCheckpoint, loadWorkspaceManagerState, markWorkspaceSessionClean, openWorkspace, recordIncidentEvent, rememberAgentProposal, renameWorkspace, resolveWorkspaceRecovery, saveAppSetting, saveCatalogCheckpoint, saveGameCheckpoint, updateAgentProposalMemoryStatus } from './workspace-db.js'
+import { archiveWorkspace, autosaveWorkspaceDraft, beginWorkspaceSession, clearIncidentEvents, closeWorkspaceDatabase, commitActiveWorkspace, createWorkspace, deleteWorkspace, duplicateWorkspace, listAgentProposalMemory, listGameCheckpoints, listIncidentEvents, loadAppSetting, loadWorkspaceManagerState, markWorkspaceSessionClean, openWorkspace, recordIncidentEvent, rememberAgentProposal, renameWorkspace, resolveWorkspaceRecovery, saveAppSetting, saveGameCheckpoint, updateAgentProposalMemoryStatus } from './workspace-db.js'
 import { parseActiveAiSource, requireSelectableAiSource, type ActiveAiSource } from './active-ai-source.js'
 import { reserveHumanReviewNotification } from './human-review-notifications.js'
 import { ensureDiagnosticLog, exportDiagnosticBundle, loadDiagnosticSettings, recordDiagnosticEvent, saveDiagnosticSettings } from './diagnostics.js'
@@ -13,26 +11,9 @@ import { AppUpdateController } from './app-updater.js'
 import { parseUpdateChannel } from './update-policy.js'
 import { desktopWindowFrame } from './window-platform.js'
 import { openSetupUpdater, readSetupChannel, saveSetupChannel } from './setup-updater.js'
-import { deleteCatalogConnector, inspectCatalogAsset, listCatalogConnectors, saveCatalogConnector, searchCatalogAssets, testCatalogConnector } from './catalog-connectors.js'
 import { GameBridgeClient } from './game-bridge.js'
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
-const statusChannel = 'game-lab:datahub-status'
-const datasetChannel = 'game-lab:datahub-dataset'
-const mcpStatusChannel = 'game-lab:datahub-mcp-status'
-const mcpConnectChannel = 'game-lab:datahub-mcp-connect'
-const mcpSettingsSaveChannel = 'game-lab:datahub-mcp-settings-save'
-const mcpAuditChannel = 'game-lab:datahub-mcp-audit'
-const mcpSearchChannel = 'game-lab:datahub-mcp-search'
-const mcpInspectChannel = 'game-lab:datahub-mcp-inspect'
-const mcpInvalidateChannel = 'game-lab:datahub-mcp-invalidate'
-const mcpWritebackChannel = 'game-lab:datahub-mcp-writeback'
-const catalogConnectorsListChannel = 'game-lab:catalog-connectors-list'
-const catalogConnectorSaveChannel = 'game-lab:catalog-connector-save'
-const catalogConnectorDeleteChannel = 'game-lab:catalog-connector-delete'
-const catalogConnectorTestChannel = 'game-lab:catalog-connector-test'
-const catalogSearchChannel = 'game-lab:catalog-search'
-const catalogInspectChannel = 'game-lab:catalog-inspect'
 const humanReviewNotificationChannel = 'game-lab:human-review-notification'
 const windowStateChannel = 'game-lab:window-state'
 const windowStateChangedChannel = 'game-lab:window-state-changed'
@@ -60,8 +41,6 @@ const workspaceOpenChannel = 'game-lab:workspace-open'
 const workspaceAutosaveChannel = 'game-lab:workspace-autosave'
 const workspaceCommitChannel = 'game-lab:workspace-commit'
 const workspaceRecoveryChannel = 'game-lab:workspace-recovery'
-const catalogCheckpointLoadChannel = 'game-lab:catalog-checkpoint-load'
-const catalogCheckpointSaveChannel = 'game-lab:catalog-checkpoint-save'
 const proposalMemoryListChannel = 'game-lab:proposal-memory-list'
 const proposalMemoryRememberChannel = 'game-lab:proposal-memory-remember'
 const proposalMemoryStatusChannel = 'game-lab:proposal-memory-status'
@@ -124,7 +103,7 @@ function configureApplicationMenu() {
     { role: 'editMenu' },
     { role: 'viewMenu' },
     { role: 'windowMenu' },
-    { role: 'help', submenu: [{ label: 'DataHub documentation', click: () => void shell.openExternal('https://docs.datahub.com/') }] },
+    { role: 'help', submenu: [{ label: 'Minecraft server help', click: () => void shell.openExternal('https://www.minecraft.net/download/server') }] },
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
@@ -247,53 +226,6 @@ app.whenReady().then(() => {
     },
     { save: (checkpoint) => saveGameCheckpoint(app.getPath('userData'), checkpoint) },
   )
-  ipcMain.handle(statusChannel, () => getDataHubStatus())
-  ipcMain.handle(datasetChannel, (_event, payload: { urn?: unknown }) => {
-    if (typeof payload?.urn !== 'string') throw new Error('Invalid DataHub dataset request')
-    return loadDatasetContext(payload.urn)
-  })
-  ipcMain.handle(mcpStatusChannel, () => getDataHubMcpConfigurationStatus())
-  ipcMain.handle(mcpConnectChannel, () => connectDataHubMcp())
-  ipcMain.handle(mcpSettingsSaveChannel, (_event, payload: unknown) => saveDataHubMcpSettings(payload))
-  ipcMain.handle(mcpAuditChannel, (_event, payload: { urn?: unknown; force?: unknown }) => {
-    if (typeof payload?.urn !== 'string') throw new Error('Invalid DataHub MCP audit request')
-    return auditDataHubWithMcp(payload.urn, payload.force === true)
-  })
-  ipcMain.handle(mcpSearchChannel, (_event, payload: { query?: unknown }) => {
-    if (typeof payload?.query !== 'string') throw new Error('Invalid DataHub search request')
-    return searchDataHubAssets(payload.query)
-  })
-  ipcMain.handle(mcpInspectChannel, (_event, payload: { urn?: unknown; force?: unknown; mode?: unknown }) => {
-    if (typeof payload?.urn !== 'string') throw new Error('Invalid DataHub inspection request')
-    return inspectDataHubAsset(payload.urn, payload.force === true, payload.mode === 'summary' ? 'summary' : 'deep')
-  })
-  ipcMain.handle(mcpInvalidateChannel, (_event, payload: { urn?: unknown }) => invalidateDataHubContext(typeof payload?.urn === 'string' ? payload.urn : undefined))
-  ipcMain.handle(catalogConnectorsListChannel, () => listCatalogConnectors())
-  ipcMain.handle(catalogConnectorSaveChannel, (_event, payload: unknown) => saveCatalogConnector(payload))
-  ipcMain.handle(catalogConnectorDeleteChannel, (_event, payload: { id?: unknown }) => deleteCatalogConnector(payload?.id))
-  ipcMain.handle(catalogConnectorTestChannel, (_event, payload: { id?: unknown }) => testCatalogConnector(payload?.id))
-  ipcMain.handle(catalogSearchChannel, (_event, payload: { query?: unknown }) => searchCatalogAssets(payload?.query))
-  ipcMain.handle(catalogInspectChannel, (_event, payload: { connectorId?: unknown; assetRef?: unknown; force?: unknown; mode?: unknown }) => inspectCatalogAsset(payload?.connectorId, payload?.assetRef, payload?.force === true, payload?.mode))
-  ipcMain.handle(mcpWritebackChannel, async (event, payload: unknown) => {
-    const request = parseDataHubDecisionRequest(payload)
-    const writebackOperation = getDataHubMcpConfigurationStatus().settings.transport === 'stdio'
-      ? 'createDocument · GraphQL GMS'
-      : 'save_document · MCP'
-    const parent = BrowserWindow.fromWebContents(event.sender)
-    const options = {
-      type: 'warning' as const,
-      title: 'Confirm DataHub write-back',
-      message: 'Publish this approved Decision to DataHub?',
-      detail: `Operation: ${writebackOperation}\nRevision: ${request.revisionId}\nTitle: GAME LAB · ${request.title}\nRelated assets: ${request.relatedAssets.length}\n\nThis is an external mutation and cannot be undone by restoring the local graph.`,
-      buttons: ['Publish to DataHub', 'Cancel'],
-      defaultId: 1,
-      cancelId: 1,
-      noLink: true,
-    }
-    const confirmation = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options)
-    if (confirmation.response !== 0) throw new Error('DataHub write-back cancelled before any external mutation')
-    return writeDataHubDecision(request)
-  })
   ipcMain.handle(humanReviewNotificationChannel, (_event, payload: { cardLabel?: unknown; reason?: unknown; versionId?: unknown; remind?: unknown }) => notifyHumanReview(payload))
   ipcMain.handle(windowStateChannel, (event) => ({ fullscreen: BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false }))
   ipcMain.handle(aiStatusChannel, () => getAiStatus())
@@ -334,8 +266,6 @@ app.whenReady().then(() => {
   ipcMain.handle(workspaceOpenChannel, (_event, payload: { workspaceId?: unknown }) => openWorkspace(app.getPath('userData'), payload?.workspaceId))
   ipcMain.handle(workspaceAutosaveChannel, (_event, payload: unknown) => autosaveWorkspaceDraft(app.getPath('userData'), payload))
   ipcMain.handle(workspaceCommitChannel, (_event, payload: unknown) => commitActiveWorkspace(app.getPath('userData'), payload))
-  ipcMain.handle(catalogCheckpointLoadChannel, (_event, payload: { key?: unknown }) => loadCatalogCheckpoint(app.getPath('userData'), payload?.key))
-  ipcMain.handle(catalogCheckpointSaveChannel, (_event, payload: { key?: unknown; progress?: unknown }) => saveCatalogCheckpoint(app.getPath('userData'), payload?.key, payload?.progress))
   ipcMain.handle(proposalMemoryListChannel, () => listAgentProposalMemory(app.getPath('userData')))
   ipcMain.handle(proposalMemoryRememberChannel, (_event, payload: unknown) => rememberAgentProposal(app.getPath('userData'), payload))
   ipcMain.handle(proposalMemoryStatusChannel, (_event, payload: { graphFingerprint?: unknown; status?: unknown; versionId?: unknown }) => (
@@ -412,5 +342,4 @@ app.on('before-quit', () => {
   chatGPT?.stop()
   markWorkspaceSessionClean(app.getPath('userData'))
   closeWorkspaceDatabase()
-  void closeDataHubMcp()
 })

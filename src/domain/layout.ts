@@ -287,30 +287,30 @@ export function connectedLayoutNodeIds(nodes: PipelineNode[], edges: Edge[], see
 }
 
 /**
- * Topology-aware XY placement adapted from LABO AI for left-to-right lineage.
+ * Topology-aware XY placement for left-to-right game workflows.
  * Pass nodeIds to arrange only agent-created cards while preserving user work.
  */
 export function layoutPipeline(nodes: PipelineNode[], edges: Edge[], nodeIds?: Iterable<string>): PipelineNode[] {
   const iterationEdges = edges.filter((edge) => edge.sourceHandle !== 'feedback')
   const requested = new Set(nodeIds ?? nodes.map((node) => node.id))
   // Host-owned starter cards form a reserved control lane. Reflow that lane
-  // whenever an incremental proposal is placed; otherwise newly added lineage
+  // whenever an incremental proposal is placed; otherwise newly added workflow
   // cards can inherit the same XY coordinates and visually cover the starter
-  // cards while user-positioned lineage remains untouched.
+  // cards while user-positioned paths remain untouched.
   const arranged = new Set(nodes
     .filter((node) => !node.data.pinned && (requested.has(node.id) || (nodeIds !== undefined && isSystemCard(node))))
     .map((node) => node.id))
   if (arranged.size === 0) return nodes
   const systemCards = nodes.filter((node) => arranged.has(node.id) && isSystemCard(node))
-  const lineageArranged = new Set([...arranged].filter((id) => !systemCards.some((card) => card.id === id)))
+  const workflowArranged = new Set([...arranged].filter((id) => !systemCards.some((card) => card.id === id)))
   const external = nodes.filter((node) => !arranged.has(node.id))
   const occupied = external.map((node) => nodeBox(node))
   const positions = new Map<string, Position>()
   let fullCursorY = layoutStartY
 
   try {
-    // Controller and Catalog Explorer are host-owned system policies, not
-    // lineage atoms. Keep them in a reserved lane so topology never overlaps.
+    // Controller and World Explorer are host-owned system policies, not
+    // action-path cards. Keep them in a reserved lane so topology never overlaps.
     let systemCursorX = layoutStartX
     const tallestSystemCard = Math.max(cardHeight, ...systemCards.map((card) => pipelineNodeDimensions(card).height))
     const externalTop = external.length > 0 ? Math.min(...external.map((node) => node.position.y)) : undefined
@@ -327,7 +327,7 @@ export function layoutPipeline(nodes: PipelineNode[], edges: Edge[], nodeIds?: I
     }
     if (systemCards.length > 0) fullCursorY = snap(systemBottom + componentGap)
 
-    const components = connectedComponents(nodes, iterationEdges, lineageArranged)
+    const components = connectedComponents(nodes, iterationEdges, workflowArranged)
     for (const componentIds of components) {
       const ids = new Set(componentIds)
       const localNodes = nodes.filter((node) => ids.has(node.id))

@@ -12,14 +12,14 @@ describe('ToastViewport', () => {
     render(<ToastViewport />)
 
     act(() => {
-      notifyError(new Error('DataHub connection timed out'))
-      notifyError(new Error('DataHub connection timed out'))
+      notifyError(new Error('Game Bridge connection timed out'))
+      notifyError(new Error('Game Bridge connection timed out'))
     })
 
     expect(screen.getAllByRole('alert')).toHaveLength(1)
-    expect(screen.getByText('DataHub connection timed out')).toBeTruthy()
+    expect(screen.getByText('Game Bridge connection timed out')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss notification' }))
-    expect(screen.queryByText('DataHub connection timed out')).toBeNull()
+    expect(screen.queryByText('Game Bridge connection timed out')).toBeNull()
   })
 
   it('catches global browser errors', () => {

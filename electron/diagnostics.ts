@@ -3,7 +3,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const MAX_STRING_LENGTH = 500
-const categories = new Set(['mcp', 'provider', 'validation', 'revision', 'renderer', 'workspace'])
+const categories = new Set(['bridge', 'provider', 'validation', 'revision', 'renderer', 'workspace'])
 const statuses = new Set(['info', 'success', 'warning', 'error'])
 const secretKeyPattern = /authorization|api[-_]?key|password|secret|token|credential|cookie/i
 const diagnosticLevels = new Set(['all', 'warnings', 'errors'])
@@ -24,7 +24,7 @@ export const defaultDiagnosticSettings: DiagnosticSettings = {
 
 export interface DiagnosticEvent {
   action: string
-  category: 'mcp' | 'provider' | 'validation' | 'revision' | 'renderer' | 'workspace'
+  category: 'bridge' | 'provider' | 'validation' | 'revision' | 'renderer' | 'workspace'
   detail?: unknown
   id: string
   status: 'info' | 'success' | 'warning' | 'error'

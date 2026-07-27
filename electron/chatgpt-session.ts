@@ -57,7 +57,7 @@ export function dynamicToolCallResponse(session: AgentToolSession, params: unkno
 }
 
 function codexCommand(): { command: string; args: string[]; env?: NodeJS.ProcessEnv } {
-  const configured = process.env.DATA_LAB_CODEX_PATH?.trim()
+  const configured = process.env.GAME_LAB_CODEX_PATH?.trim()
   if (configured) return { command: configured, args: ['app-server'] }
   const target = ({
     'darwin-arm64': ['@openai/codex-darwin-arm64', 'aarch64-apple-darwin'], 'darwin-x64': ['@openai/codex-darwin-x64', 'x86_64-apple-darwin'],
@@ -105,7 +105,7 @@ export class ChatGPTAgentSession {
       this.process.stderr.resume()
       this.process.once('exit', () => { this.fail(new Error('Codex App Server stopped')); this.process = undefined; this.initialized = undefined })
       createInterface({ input: this.process.stdout }).on('line', (line) => this.receive(line))
-      void this.request('initialize', { clientInfo: { name: 'data_lab', title: 'GAME LAB', version: this.version }, capabilities: { experimentalApi: true, requestAttestation: false } }).then(() => { this.write({ method: 'initialized' }); ready = true; resolve() }).catch((error) => { this.process?.kill(); this.initialized = undefined; reject(error) })
+      void this.request('initialize', { clientInfo: { name: 'game_lab', title: 'GAME LAB', version: this.version }, capabilities: { experimentalApi: true, requestAttestation: false } }).then(() => { this.write({ method: 'initialized' }); ready = true; resolve() }).catch((error) => { this.process?.kill(); this.initialized = undefined; reject(error) })
     })
     return this.initialized
   }

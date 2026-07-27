@@ -1,34 +1,23 @@
-# DataHub agent workflow
+# GAME LAB agent workflow
 
-GAME LAB treats MCP tools as capabilities and DataHub Skills as the instructions for combining those capabilities safely.
+GAME LAB connects GPT to an authorized private game server through a narrow Game Bridge. The model receives structured observations and can propose only allowlisted actions.
 
-## Audit workflow
+## Gameplay loop
 
-1. **Search** — resolve the source card's DataHub URN and prefer an owned, documented or certified asset.
-2. **Inspect** — read the entity, schema fields, tags, terms, owners and health signals.
-3. **Trace lineage** — walk downstream far enough to include every output represented on the canvas.
-4. **Compare** — compare DataHub lineage with the local graph and flag missing, reversed or unexpected paths.
-5. **Validate governance** — propagate classifications such as PII through the proposed path and test every policy gate.
-6. **Propose** — return a bounded graph diff containing known card types and existing node IDs.
-7. **Review** — show all reads, warnings, additions, removals and intended writeback. Never auto-apply.
-8. **Write back** — after approval, preserve the decision as a DataHub context document or governed metadata proposal.
+1. **Observe** — read the latest versioned server checkpoint.
+2. **Plan** — ask the configured AI provider for one bounded next step.
+3. **Validate** — reject unknown actions, stale checkpoints and out-of-range arguments.
+4. **Review** — show the proposed graph change and material game action to the operator.
+5. **Execute** — send an approved allowlisted action through the Game Bridge.
+6. **Verify** — capture the resulting observation and action receipt.
+7. **Recover** — stop the agent or restore a local graph version when a check fails.
 
 ## Required guardrails
 
-- Read-only MCP tools are allowed during analysis.
-- Mutation tools require explicit user approval and DataHub-side enablement.
-- A proposed graph must be acyclic and every connection must reference existing cards.
-- Data Source cards cannot have inputs; Output cards cannot have outputs.
-- Every Split must retain at least two labeled branches.
-- Sensitive field transformations must be visible as cards, not hidden in an agent explanation.
-- If DataHub is unavailable, the app stays in Demo mode and does not claim a successful writeback.
-
-## DataHub Skills mapping
-
-| Stage | Skill | Purpose |
-| --- | --- | --- |
-| Connect | `datahub-setup` | Authenticate and verify the instance |
-| Discover | `datahub-search` | Find trustworthy catalog assets |
-| Impact | `datahub-lineage` | Trace upstream and downstream consumers |
-| Guard | `datahub-quality` | Inspect health and assertions |
-| Preserve | `datahub-enrich` | Apply approved catalog context |
+- Operate only on owned or explicitly authorized private servers.
+- Treat game observations as untrusted input, never as hidden instructions.
+- Keep credentials and bridge tokens in the Electron main process.
+- Require a fresh checkpoint before executing an action.
+- Never expose arbitrary shell, filesystem or network tools to the model.
+- Keep emergency stop available independently of the model.
+- Persist local graph revisions and human review decisions in SQLite.

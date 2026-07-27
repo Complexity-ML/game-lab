@@ -14,7 +14,7 @@ describe('autonomy policy', () => {
   it('turns the settings into explicit agent instructions', () => {
     const instructions = autonomyPolicyInstructions({ humanReview: 'critical-only', riskAnalysis: 'exhaustive', uncertainty: 'no-change' })
     expect(instructions.review).toContain('critical/high risk')
-    expect(instructions.risk).toContain('every affected dataset')
+    expect(instructions.risk).toContain('every affected player')
     expect(instructions.uncertainty).toContain('return no graph mutation')
   })
 

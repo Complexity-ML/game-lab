@@ -134,7 +134,7 @@ export function usePipelineVersions({ edges, nodes, proposal, resolveApprovedExe
     setPendingVersionId(undefined)
     setProposal(undefined)
     setActivity('Agent proposal rejected · revision marked rejected · active branch unchanged')
-    if (rejectedFingerprint && window.dataLab) void window.dataLab.updateAgentProposalMemoryStatus(rejectedFingerprint, 'rejected', pendingVersionId).catch(() => undefined)
+    if (rejectedFingerprint && window.gameLab) void window.gameLab.updateAgentProposalMemoryStatus(rejectedFingerprint, 'rejected', pendingVersionId).catch(() => undefined)
     recordDiagnostic({ category: 'revision', action: 'proposal.reject', status: 'info', detail: { versionId: pendingVersionId } })
   }
 
@@ -145,7 +145,7 @@ export function usePipelineVersions({ edges, nodes, proposal, resolveApprovedExe
     setPendingVersionId(undefined)
     setProposal(undefined)
     setActivity(`Human intent approved · invalid transaction discarded · agent repairing ${blockerIds.length} atomic blocker${blockerIds.length === 1 ? '' : 's'}`)
-    if (invalidFingerprint && window.dataLab) void window.dataLab.updateAgentProposalMemoryStatus(invalidFingerprint, 'invalid', pendingVersionId).catch(() => undefined)
+    if (invalidFingerprint && window.gameLab) void window.gameLab.updateAgentProposalMemoryStatus(invalidFingerprint, 'invalid', pendingVersionId).catch(() => undefined)
     recordDiagnostic({ category: 'revision', action: 'proposal.atomic-repair', status: 'warning', detail: { versionId: pendingVersionId, blockerIds } })
   }
 
@@ -170,7 +170,7 @@ export function usePipelineVersions({ edges, nodes, proposal, resolveApprovedExe
     setActivity(readinessErrors > 0
       ? `Human Review approved · ${version.label} committed · ${readinessErrors} pipeline readiness check${readinessErrors === 1 ? '' : 's'} remain`
       : `Human Review approved · ${version.label} committed atomically`)
-    if (window.dataLab) void window.dataLab.updateAgentProposalMemoryStatus(graphFingerprint(version.nodes, version.edges), 'committed', versionId).catch(() => undefined)
+    if (window.gameLab) void window.gameLab.updateAgentProposalMemoryStatus(graphFingerprint(version.nodes, version.edges), 'committed', versionId).catch(() => undefined)
     return true
   }
 
@@ -181,7 +181,7 @@ export function usePipelineVersions({ edges, nodes, proposal, resolveApprovedExe
     if (resolveRejectedExecution) setNodes((current) => resolveRejectedExecution(current, edges))
     if (pendingVersionId === versionId) { setPendingVersionId(undefined); setProposal(undefined) }
     setActivity(`Human Review rejected · ${version.label} remains visible in history · active graph unchanged`)
-    if (window.dataLab) void window.dataLab.updateAgentProposalMemoryStatus(graphFingerprint(version.nodes, version.edges), 'rejected', versionId).catch(() => undefined)
+    if (window.gameLab) void window.gameLab.updateAgentProposalMemoryStatus(graphFingerprint(version.nodes, version.edges), 'rejected', versionId).catch(() => undefined)
     return true
   }
 

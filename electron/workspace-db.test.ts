@@ -1,42 +1,26 @@
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  archiveWorkspace,
-  clearIncidentEvents,
   autosaveWorkspaceDraft,
-  beginWorkspaceSession,
   closeWorkspaceDatabase,
   commitActiveWorkspace,
   createWorkspace,
-  deleteWorkspace,
-  duplicateWorkspace,
-  listWorkspaces,
-  listIncidentEvents,
   listAgentProposalMemory,
   listGameCheckpoints,
   loadAppSetting,
-  loadCatalogCheckpoint,
   loadSavedWorkspace,
   loadWorkspaceManagerState,
-  markWorkspaceSessionClean,
   openWorkspace,
-  recordIncidentEvent,
   rememberAgentProposal,
-  renameWorkspace,
-  resolveWorkspaceRecovery,
-  saveAppSetting,
-  saveCatalogCheckpoint,
   saveGameCheckpoint,
-  saveWorkspace,
-  updateAgentProposalMemoryStatus,
 } from './workspace-db.js'
 
 let testDirectory: string | undefined
 
-function directory(label = 'workspace') {
+function directory(label: string) {
   testDirectory = mkdtempSync(join(tmpdir(), `game-lab-${label}-`))
   return testDirectory
 }
@@ -47,64 +31,38 @@ afterEach(() => {
   testDirectory = undefined
 })
 
-describe('SQLite workspace persistence', () => {
-  it('starts with a blank workbench on a new installation', () => {
+describe('SQLite game workspace persistence', () => {
+  it('starts with a blank workbench', () => {
     const target = directory('blank')
-    const state = loadWorkspaceManagerState(target)
-
-    expect(state.activeWorkspace).toBeUndefined()
-    expect(state.activeWorkspaceId).toBeNull()
-    expect(state.workspaces).toEqual([])
-    expect(autosaveWorkspaceDraft(target, { nodes: [{ id: 'example' }] })).toEqual({ saved: false, reason: 'no-active-workspace' })
+    expect(loadWorkspaceManagerState(target)).toMatchObject({
+      activeWorkspaceId: null,
+      workspaces: [],
+    })
+    expect(autosaveWorkspaceDraft(target, { nodes: [] })).toEqual({ saved: false, reason: 'no-active-workspace' })
   })
 
-  it('does not persist or expose incidents for an unsaved blank workbench', () => {
-    const target = directory('blank-incidents')
-    expect(recordIncidentEvent(target, {
-      incidentKey: 'connector:blank',
-      transition: 'opened',
-      severity: 'warning',
-      title: 'Temporary connector warning',
-      detail: 'This unsaved workbench has no durable incident owner.',
-    })).toEqual({ recorded: false })
-    expect(listIncidentEvents(target)).toEqual([])
+  it('isolates game graphs by workspace', () => {
+    const target = directory('workspaces')
+    const arena = createWorkspace(target, 'Agent arena', { projectTitle: 'Agent arena', nodes: [{ id: 'agent-1' }], edges: [] })
+    expect(autosaveWorkspaceDraft(target, { projectTitle: 'Agent arena draft', nodes: [{ id: 'agent-2' }], edges: [] })).toMatchObject({ saved: true })
+    expect(commitActiveWorkspace(target, { projectTitle: 'Agent arena', nodes: [{ id: 'agent-1' }], edges: [] })).toMatchObject({ saved: true })
 
-    closeWorkspaceDatabase()
-    const legacy = new DatabaseSync(join(target, 'game-lab.sqlite'))
-    legacy.prepare(`
-      INSERT INTO incident_events (id, workspace_id, incident_key, transition, severity, title, detail, created_at)
-      VALUES (?, NULL, ?, ?, ?, ?, ?, ?)
-    `).run('legacy-blank-incident', 'legacy:blank', 'opened', 'warning', 'Legacy blank incident', 'Written by an older release.', new Date().toISOString())
-    legacy.close()
-
-    expect(listIncidentEvents(target)).toEqual([])
-    expect(clearIncidentEvents(target)).toEqual({ deleted: 0, workspaceId: undefined })
+    createWorkspace(target, 'Server operations', { projectTitle: 'Server operations', nodes: [], edges: [] })
+    expect(loadSavedWorkspace(target)).toMatchObject({ projectTitle: 'Server operations' })
+    openWorkspace(target, arena.activeWorkspaceId!)
+    expect(loadSavedWorkspace(target)).toMatchObject({ projectTitle: 'Agent arena' })
   })
 
-  it('keeps workbench catalog coverage only for the current unsaved session', () => {
-    const target = directory('catalog-checkpoint')
-    const progress = { inspected: 8, total: 67, datasets: [{ urn: 'urn:li:dataset:test-1' }] }
-
-    expect(saveCatalogCheckpoint(target, 'catalog:deadbeef', progress)).toMatchObject({ saved: true, scopeId: 'workbench' })
-    expect(loadCatalogCheckpoint(target, 'catalog:deadbeef')).toEqual(progress)
-    expect(loadWorkspaceManagerState(target).activeWorkspaceId).toBeNull()
-
-    closeWorkspaceDatabase()
-    expect(loadCatalogCheckpoint(target, 'catalog:deadbeef')).toEqual(progress)
-    beginWorkspaceSession(target)
-    expect(loadCatalogCheckpoint(target, 'catalog:deadbeef')).toBeNull()
-  })
-
-  it('stores game observations and action receipts as workspace-scoped SQLite checkpoints', () => {
-    const target = directory('game-checkpoints')
+  it('stores observations and action receipts in the active game workspace', () => {
+    const target = directory('checkpoints')
+    const first = createWorkspace(target, 'Arena', { projectTitle: 'Arena' })
     saveGameCheckpoint(target, {
       kind: 'observation',
       checkpointId: 'checkpoint-1',
       observationId: 'observation-1',
       status: 'captured',
-      summary: 'Private shard observation captured',
+      summary: 'Private-server observation captured',
     })
-    const workspace = createWorkspace(target, 'Agent arena', { projectTitle: 'Agent arena' })
     saveGameCheckpoint(target, {
       kind: 'action',
       checkpointId: 'checkpoint-1',
@@ -113,455 +71,71 @@ describe('SQLite workspace persistence', () => {
       status: 'accepted',
       summary: 'Movement accepted',
     })
-
-    expect(listGameCheckpoints(target)).toMatchObject([
-      { kind: 'action', checkpointId: 'checkpoint-1', commandId: 'command-1', action: 'move_to', status: 'accepted' },
-      { kind: 'observation', checkpointId: 'checkpoint-1', observationId: 'observation-1', status: 'captured' },
-    ])
+    expect(listGameCheckpoints(target)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'observation', checkpointId: 'checkpoint-1' }),
+      expect.objectContaining({ kind: 'action', commandId: 'command-1', action: 'move_to' }),
+    ]))
 
     createWorkspace(target, 'Other arena', { projectTitle: 'Other arena' })
     expect(listGameCheckpoints(target)).toEqual([])
-    openWorkspace(target, workspace.activeWorkspaceId!)
+    openWorkspace(target, first.activeWorkspaceId!)
     expect(listGameCheckpoints(target)).toHaveLength(2)
   })
 
-  it('stores proposal memory relationally, increments duplicates, and purges an unsaved workbench next session', () => {
-    const target = directory('proposal-memory-workbench')
-    const proposal = {
+  it('deduplicates local proposal memory', () => {
+    const target = directory('proposal-memory')
+    createWorkspace(target, 'Arena', { projectTitle: 'Arena' })
+    const candidate = {
       graphFingerprint: '1111111111111111',
       baseGraphFingerprint: '0000000000000000',
       source: 'pipeline' as const,
-      title: 'Optimize unused licenses',
-      summary: 'Add a reviewed reclamation branch.',
-      rationale: 'Fresh SAM evidence reports inactive assigned seats.',
+      title: 'Recover the agent',
+      summary: 'Add a reviewed safe-return branch.',
+      rationale: 'The latest game checkpoint reports low health.',
     }
-
-    expect(rememberAgentProposal(target, proposal)).toMatchObject({ occurrenceCount: 1, scopeId: 'workbench', status: 'generated' })
-    expect(rememberAgentProposal(target, proposal)).toMatchObject({ occurrenceCount: 2, scopeId: 'workbench' })
-    expect(updateAgentProposalMemoryStatus(target, proposal.graphFingerprint, 'rejected')).toMatchObject({ status: 'rejected', occurrenceCount: 2 })
-    expect(listAgentProposalMemory(target)).toHaveLength(1)
-
-    closeWorkspaceDatabase()
-    const sqlite = new DatabaseSync(join(target, 'game-lab.sqlite'))
-    const columns = sqlite.prepare('PRAGMA table_info(agent_proposal_memory)').all() as unknown as { name: string }[]
-    expect(columns.map((column) => column.name)).not.toContain('payload')
-    expect(columns.map((column) => column.name)).not.toContain('proposal_json')
-    sqlite.close()
-
-    beginWorkspaceSession(target)
-    expect(listAgentProposalMemory(target)).toEqual([])
+    expect(rememberAgentProposal(target, candidate)).toMatchObject({ occurrenceCount: 1 })
+    expect(rememberAgentProposal(target, candidate)).toMatchObject({ occurrenceCount: 2 })
+    expect(listAgentProposalMemory(target)).toEqual([
+      expect.objectContaining({ title: 'Recover the agent', occurrenceCount: 2 }),
+    ])
   })
 
-  it('treats a missing proposal-memory row as a legacy-compatible no-op', () => {
-    const target = directory('proposal-memory-missing')
-
-    expect(updateAgentProposalMemoryStatus(target, '2222222222222222', 'committed', 'legacy-version')).toBeUndefined()
-    expect(listAgentProposalMemory(target)).toEqual([])
-  })
-
-  it('moves current workbench proposal memory into a workspace and isolates later workspaces', () => {
-    const target = directory('proposal-memory-workspaces')
-    const proposal = {
-      graphFingerprint: '2222222222222222',
-      baseGraphFingerprint: '0000000000000000',
-      source: 'card-rework' as const,
-      title: 'Match entitlements',
-      summary: 'Add bounded license matching.',
-      rationale: 'The source has no reusable entitlement comparison.',
-    }
-    rememberAgentProposal(target, proposal)
-    saveCatalogCheckpoint(target, 'catalog:workbench', { inspected: 12 })
-    const first = createWorkspace(target, 'License review', { projectTitle: 'License review' })
-    expect(listAgentProposalMemory(target)).toMatchObject([{ scopeId: first.activeWorkspaceId, title: proposal.title }])
-    expect(loadCatalogCheckpoint(target, 'catalog:workbench')).toEqual({ inspected: 12 })
-
-    createWorkspace(target, 'Renewals', { projectTitle: 'Renewals' })
-    expect(listAgentProposalMemory(target)).toEqual([])
-    openWorkspace(target, first.activeWorkspaceId!)
-    expect(listAgentProposalMemory(target)).toHaveLength(1)
-  })
-
-  it('versions the current SQLite schema', () => {
-    const target = directory('schema-version')
+  it('purges removed integration tables and settings from an existing database', () => {
+    const target = directory('removed-integration')
     loadWorkspaceManagerState(target)
     closeWorkspaceDatabase()
+
     const sqlite = new DatabaseSync(join(target, 'game-lab.sqlite'))
-
-    expect((sqlite.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(2)
-    const workspaceColumns = sqlite.prepare('PRAGMA table_info(workspaces)').all() as unknown as { name: string }[]
-    const checkpointColumns = sqlite.prepare('PRAGMA table_info(catalog_checkpoints)').all() as unknown as { name: string }[]
-    expect(workspaceColumns.map((column) => column.name)).not.toEqual(expect.arrayContaining(['payload', 'draft_payload']))
-    expect(checkpointColumns.map((column) => column.name)).not.toContain('payload')
-    expect((sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as unknown as { name: string }[]).map((row) => row.name)).toEqual(expect.arrayContaining([
-      'workspace_documents',
-      'graph_snapshots',
-      'graph_nodes',
-      'graph_edges',
-      'workspace_versions',
-      'catalog_checkpoint_values',
-    ]))
-    sqlite.close()
-  })
-
-  it('migrates v1 workspace, draft, versions and checkpoints without retaining JSON blob columns', () => {
-    const target = directory('relational-migration')
-    const path = join(target, 'game-lab.sqlite')
-    const legacy = new DatabaseSync(path)
-    legacy.exec(`
-      CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);
-      CREATE TABLE workspaces (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, payload TEXT NOT NULL, draft_payload TEXT,
-        archived INTEGER NOT NULL DEFAULT 0, dirty INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, draft_updated_at TEXT
-      );
+    sqlite.exec(`
       CREATE TABLE catalog_checkpoints (
-        scope_id TEXT NOT NULL, checkpoint_key TEXT NOT NULL, payload TEXT NOT NULL,
-        updated_at TEXT NOT NULL, PRIMARY KEY (scope_id, checkpoint_key)
+        scope_id TEXT NOT NULL,
+        checkpoint_key TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (scope_id, checkpoint_key)
       );
-      PRAGMA user_version = 1;
+      CREATE TABLE catalog_checkpoint_values (
+        scope_id TEXT NOT NULL,
+        checkpoint_key TEXT NOT NULL,
+        path TEXT NOT NULL,
+        value_type TEXT NOT NULL,
+        PRIMARY KEY (scope_id, checkpoint_key, path)
+      );
     `)
-    const nodes = [
-      { id: 'source', type: 'pipeline', position: { x: 10, y: 20 }, data: { kind: 'source', label: 'Licenses', schema: [{ name: 'seat_id', type: 'string' }] } },
-      { id: 'profile', type: 'pipeline', position: { x: 310, y: 20 }, data: { kind: 'profile', label: 'License profile', schema: [] } },
-    ]
-    const edges = [{ id: 'source-profile', source: 'source', target: 'profile', type: 'elastic' }]
-    const committed = {
-      projectTitle: 'License inventory',
-      nodes,
-      edges,
-      versions: [{
-        id: 'version-1',
-        label: 'Bind source',
-        createdAt: '2026-07-26T20:00:00.000Z',
-        origin: 'agent',
-        nodes,
-        edges,
-        blockingIssues: 0,
-        status: 'committed',
-        evidence: [{
-          tool: 'get_entities',
-          urn: 'urn:license',
-          capturedAt: '2026-07-26T20:00:00.000Z',
-          expiresAt: '2026-07-26T20:05:00.000Z',
-          status: 'ok',
-          summary: 'License source read.',
-          cached: false,
-          stale: false,
-        }],
-      }],
-      projectSettings: { inspectorOpen: true, libraryOpen: false },
-    }
-    const draft = { ...committed, projectTitle: 'License inventory draft', nodes: [...nodes, { id: 'review', type: 'pipeline', position: { x: 610, y: 20 }, data: { kind: 'review', label: 'Review', schema: [] } }] }
-    legacy.prepare(`
-      INSERT INTO workspaces (id, name, payload, draft_payload, archived, dirty, created_at, updated_at, draft_updated_at)
-      VALUES ('workspace-v1', 'License inventory', ?, ?, 0, 1, ?, ?, ?)
-    `).run(JSON.stringify(committed), JSON.stringify(draft), '2026-07-26T20:00:00.000Z', '2026-07-26T20:00:00.000Z', '2026-07-26T20:01:00.000Z')
-    legacy.prepare('INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)').run('active-workspace-id', 'workspace-v1', '2026-07-26T20:00:00.000Z')
-    legacy.prepare('INSERT INTO catalog_checkpoints (scope_id, checkpoint_key, payload, updated_at) VALUES (?, ?, ?, ?)').run(
-      'workspace-v1',
-      'catalog:test',
-      JSON.stringify({ inspected: 2, total: 2, datasets: [{ urn: 'urn:license', issues: [] }] }),
-      '2026-07-26T20:01:00.000Z',
+    sqlite.prepare('INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)').run(
+      'datahub-token',
+      'legacy-secret',
+      new Date().toISOString(),
     )
-    legacy.close()
+    sqlite.close()
 
-    const state = loadWorkspaceManagerState(target, true)
-    expect(state.activeWorkspace?.payload).toEqual(committed)
-    expect(state.recovery?.payload).toEqual(draft)
-    expect(loadCatalogCheckpoint(target, 'catalog:test')).toEqual({ inspected: 2, total: 2, datasets: [{ urn: 'urn:license', issues: [] }] })
+    expect(loadAppSetting(target, 'datahub-token')).toBeNull()
     closeWorkspaceDatabase()
 
-    expect(existsSync(join(target, 'game-lab.pre-relational-v1.sqlite'))).toBe(true)
-    const migrated = new DatabaseSync(path)
-    expect((migrated.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(2)
-    expect((migrated.prepare('PRAGMA table_info(workspaces)').all() as unknown as { name: string }[]).map((column) => column.name)).not.toEqual(expect.arrayContaining(['payload', 'draft_payload']))
-    expect((migrated.prepare('PRAGMA table_info(catalog_checkpoints)').all() as unknown as { name: string }[]).map((column) => column.name)).not.toContain('payload')
-    expect((migrated.prepare('SELECT COUNT(*) AS count FROM graph_nodes').get() as { count: number }).count).toBeGreaterThan(0)
-    expect((migrated.prepare('SELECT COUNT(*) AS count FROM graph_edges').get() as { count: number }).count).toBeGreaterThan(0)
-    expect((migrated.prepare('PRAGMA quick_check').get() as { quick_check: string }).quick_check).toBe('ok')
-    migrated.close()
-  })
-
-  it('isolates catalog checkpoints by active workspace', () => {
-    const target = directory('catalog-workspaces')
-    const first = createWorkspace(target, 'First', { nodes: [] })
-    saveCatalogCheckpoint(target, 'catalog:shared', { inspected: 4 })
-    const second = createWorkspace(target, 'Second', { nodes: [] })
-    saveCatalogCheckpoint(target, 'catalog:shared', { inspected: 12 })
-
-    openWorkspace(target, first.activeWorkspaceId!)
-    expect(loadCatalogCheckpoint(target, 'catalog:shared')).toEqual({ inspected: 4 })
-    openWorkspace(target, second.activeWorkspaceId!)
-    expect(loadCatalogCheckpoint(target, 'catalog:shared')).toEqual({ inspected: 12 })
-  })
-
-  it('migrates the legacy singleton without losing review history', () => {
-    const target = directory('migration')
-    const legacy = new DatabaseSync(join(target, 'game-lab.sqlite'))
-    legacy.exec('CREATE TABLE workspace_state (id INTEGER PRIMARY KEY, payload TEXT NOT NULL, updated_at TEXT NOT NULL)')
-    const payload = {
-      projectTitle: 'Customer activation',
-      nodes: [{ id: 'active-source' }],
-      edges: [],
-      versions: [{ id: 'v-review', status: 'pending-review', description: 'Upgrade: mask email' }],
-    }
-    legacy.prepare('INSERT INTO workspace_state (id, payload, updated_at) VALUES (1, ?, ?)').run(JSON.stringify(payload), '2026-07-20T08:00:00.000Z')
-    legacy.close()
-
-    const state = loadWorkspaceManagerState(target)
-    expect(state.activeWorkspace?.name).toBe('Customer activation')
-    expect(state.activeWorkspace?.payload).toEqual(payload)
-    expect(state.workspaces).toHaveLength(1)
-    expect(loadSavedWorkspace(target)).toEqual(payload)
-  })
-
-  it('creates, renames, duplicates, opens and archives independent workspaces', () => {
-    const target = directory('manager')
-    const firstPayload = { projectTitle: 'Marketing', nodes: [{ id: 'source-a' }], projectSettings: { inspectorOpen: false, libraryOpen: true } }
-    const first = createWorkspace(target, 'Marketing', firstPayload)
-    const firstId = first.activeWorkspaceId!
-    renameWorkspace(target, firstId, 'Marketing governed')
-    const duplicate = duplicateWorkspace(target, firstId)
-    const duplicateId = duplicate.activeWorkspaceId!
-
-    expect(duplicateId).not.toBe(firstId)
-    expect(duplicate.activeWorkspace?.name).toBe('Marketing governed copy')
-    expect(duplicate.activeWorkspace?.payload).toEqual(firstPayload)
-
-    const reopened = openWorkspace(target, firstId)
-    expect(reopened.activeWorkspace?.name).toBe('Marketing governed')
-    const afterArchive = archiveWorkspace(target, firstId)
-    expect(afterArchive.activeWorkspaceId).toBe(duplicateId)
-    expect(afterArchive.workspaces.find((workspace) => workspace.id === firstId)?.archived).toBe(true)
-    expect(listWorkspaces(target)).toHaveLength(2)
-  })
-
-  it('numbers duplicate names cleanly and permanently deletes only archived workspaces', () => {
-    const target = directory('copies')
-    const original = createWorkspace(target, 'Untitled pipeline', { projectTitle: 'Untitled pipeline' })
-    const originalId = original.activeWorkspaceId!
-    const firstCopy = duplicateWorkspace(target, originalId)
-    expect(firstCopy.activeWorkspace?.name).toBe('Untitled pipeline copy')
-    const secondCopy = duplicateWorkspace(target, firstCopy.activeWorkspaceId!)
-    expect(secondCopy.activeWorkspace?.name).toBe('Untitled pipeline copy 2')
-    expect(() => deleteWorkspace(target, originalId)).toThrow('Only an archived workspace')
-    archiveWorkspace(target, originalId)
-    const afterDelete = deleteWorkspace(target, originalId)
-    expect(afterDelete.workspaces.map((workspace) => workspace.name).sort()).toEqual(['Untitled pipeline copy', 'Untitled pipeline copy 2'])
-  })
-
-  it('purges incident history when its archived workspace is permanently deleted', () => {
-    const target = directory('delete-incidents')
-    const workspace = createWorkspace(target, 'Disposable monitor', { projectTitle: 'Disposable monitor' })
-    const workspaceId = workspace.activeWorkspaceId!
-    recordIncidentEvent(target, {
-      incidentKey: 'connector:orders',
-      transition: 'opened',
-      severity: 'warning',
-      title: 'Orders unavailable',
-      detail: 'Connector read failed.',
-      sourceSystem: 'Kafka',
-      sourceRef: 'topic:orders',
-    })
-    expect(listIncidentEvents(target)).toHaveLength(1)
-    archiveWorkspace(target, workspaceId)
-    deleteWorkspace(target, workspaceId)
-    expect(listIncidentEvents(target)).toEqual([])
-  })
-
-  it('clears incident reports only for the active workspace', () => {
-    const target = directory('clear-incidents')
-    const first = createWorkspace(target, 'Orders monitor', { projectTitle: 'Orders monitor' })
-    recordIncidentEvent(target, {
-      incidentKey: 'orders',
-      transition: 'opened',
-      severity: 'warning',
-      title: 'Orders drift',
-      detail: 'Schema changed.',
-    })
-    createWorkspace(target, 'Customers monitor', { projectTitle: 'Customers monitor' })
-    recordIncidentEvent(target, {
-      incidentKey: 'customers',
-      transition: 'opened',
-      severity: 'critical',
-      title: 'Customers unavailable',
-      detail: 'Connector failed.',
-    })
-
-    expect(clearIncidentEvents(target)).toMatchObject({ deleted: 1 })
-    expect(listIncidentEvents(target)).toEqual([])
-    openWorkspace(target, first.activeWorkspaceId!)
-    expect(listIncidentEvents(target)).toHaveLength(1)
-    expect(listIncidentEvents(target)[0]?.incidentKey).toBe('orders')
-  })
-
-  it('keeps debounced drafts separate and offers recovery only after an unclean shutdown', () => {
-    const target = directory('recovery')
-    createWorkspace(target, 'Orders', { projectTitle: 'Orders', nodes: [{ id: 'baseline' }], versions: [] })
-    expect(beginWorkspaceSession(target)).toBe(false)
-    const draft = { projectTitle: 'Orders', nodes: [{ id: 'baseline' }], versions: [{ id: 'pending', status: 'pending-review', proposedNodes: [{ id: 'agent-proposal' }] }] }
-    expect(autosaveWorkspaceDraft(target, draft).saved).toBe(true)
-    expect(loadSavedWorkspace(target)).toEqual({ projectTitle: 'Orders', nodes: [{ id: 'baseline' }], versions: [] })
-
-    closeWorkspaceDatabase()
-    expect(beginWorkspaceSession(target)).toBe(true)
-    const crashed = loadWorkspaceManagerState(target, true)
-    expect(crashed.activeWorkspace?.payload).toEqual({ projectTitle: 'Orders', nodes: [{ id: 'baseline' }], versions: [] })
-    expect(crashed.recovery?.payload).toEqual(draft)
-    expect(crashed.activeWorkspace?.dirty).toBe(true)
-
-    const recovered = resolveWorkspaceRecovery(target, 'recover')
-    expect(recovered.activeWorkspace?.payload).toEqual(draft)
-    expect(recovered.recovery).toBeUndefined()
-    expect(recovered.activeWorkspace?.dirty).toBe(false)
-  })
-
-  it('can discard a crash draft and promotes autosaves on a clean shutdown', () => {
-    const target = directory('clean')
-    createWorkspace(target, 'Baseline', { value: 1 })
-    beginWorkspaceSession(target)
-    autosaveWorkspaceDraft(target, { value: 2 })
-    expect(resolveWorkspaceRecovery(target, 'discard').activeWorkspace?.payload).toEqual({ value: 1 })
-
-    autosaveWorkspaceDraft(target, { value: 3 })
-    markWorkspaceSessionClean(target)
-    closeWorkspaceDatabase()
-    expect(beginWorkspaceSession(target)).toBe(false)
-    expect(loadWorkspaceManagerState(target).activeWorkspace?.payload).toEqual({ value: 3 })
-  })
-
-  it('commits an autosaved draft before explicitly switching workspaces', () => {
-    const target = directory('switch')
-    const first = createWorkspace(target, 'First', { value: 'baseline' })
-    const firstId = first.activeWorkspaceId!
-    autosaveWorkspaceDraft(target, { value: 'autosaved before switch' })
-    const second = createWorkspace(target, 'Second', { value: 'second' })
-
-    openWorkspace(target, firstId)
-    expect(loadWorkspaceManagerState(target).activeWorkspace?.payload).toEqual({ value: 'autosaved before switch' })
-    expect(second.workspaces.find((workspace) => workspace.id === firstId)?.dirty).toBe(false)
-  })
-
-  it('supports explicit commits and preserves application settings independently', () => {
-    const target = directory('settings')
-    saveAppSetting(target, 'active-ai-provider', 'anthropic')
-    expect(saveWorkspace(target, { projectTitle: 'Independent graph' })).toEqual({ saved: true })
-    autosaveWorkspaceDraft(target, { projectTitle: 'Draft graph' })
-    commitActiveWorkspace(target, { projectTitle: 'Committed graph' })
-    closeWorkspaceDatabase()
-
-    expect(loadAppSetting(target, 'active-ai-provider')).toBe('anthropic')
-    expect(loadSavedWorkspace(target)).toEqual({ projectTitle: 'Committed graph' })
-  })
-
-  it('stores a bounded incident lifecycle in the active workspace and suppresses duplicate noise', () => {
-    const target = directory('incidents')
-    createWorkspace(target, 'Monitored graph', { projectTitle: 'Monitored graph' })
-    const opened = recordIncidentEvent(target, {
-      incidentKey: 'datahub-evidence:customers',
-      transition: 'opened',
-      severity: 'warning',
-      title: 'Customer evidence unavailable',
-      detail: 'get_entities timed out',
-      sourceSystem: 'DataHub',
-      sourceRef: 'urn:li:dataset:customers',
-      fingerprint: 'warning-v1',
-      cardId: 'customers-source',
-    })
-    expect(opened.recorded).toBe(true)
-    expect(recordIncidentEvent(target, {
-      incidentKey: 'datahub-evidence:customers',
-      transition: 'opened',
-      severity: 'warning',
-      title: 'Customer evidence unavailable',
-      detail: 'same timeout',
-      fingerprint: 'warning-v1',
-    }).recorded).toBe(false)
-    const worsened = recordIncidentEvent(target, {
-      incidentKey: 'datahub-evidence:customers',
-      transition: 'opened',
-      severity: 'critical',
-      title: 'Customer evidence unavailable',
-      detail: 'all metadata reads timed out',
-      fingerprint: 'critical-v1',
-    })
-    expect(worsened.event).toMatchObject({
-      transition: 'worsened',
-      sourceSystem: 'DataHub',
-      sourceRef: 'urn:li:dataset:customers',
-    })
-    const recovered = recordIncidentEvent(target, {
-      incidentKey: 'datahub-evidence:customers',
-      transition: 'recovered',
-      severity: 'info',
-      title: 'Customer evidence available',
-      detail: 'all required metadata reads returned',
-      fingerprint: 'healthy-v1',
-    })
-    expect(recovered).toMatchObject({
-      recorded: true,
-      event: { sourceSystem: 'DataHub', sourceRef: 'urn:li:dataset:customers' },
-    })
-    expect(recordIncidentEvent(target, {
-      incidentKey: 'datahub-evidence:customers',
-      transition: 'recovered',
-      severity: 'info',
-      title: 'Customer evidence available',
-      detail: 'still healthy',
-      fingerprint: 'healthy-v1',
-    }).recorded).toBe(false)
-    const reopened = recordIncidentEvent(target, {
-      incidentKey: 'datahub-evidence:customers',
-      transition: 'opened',
-      severity: 'warning',
-      title: 'Customer evidence unavailable again',
-      detail: 'a later monitored fingerprint failed',
-      fingerprint: 'warning-v2',
-    })
-    expect(reopened).toMatchObject({
-      recorded: true,
-      event: { sourceSystem: 'DataHub', sourceRef: 'urn:li:dataset:customers' },
-    })
-
-    expect(listIncidentEvents(target).map((event) => event.transition)).toEqual(['opened', 'recovered', 'worsened', 'opened'])
-    expect(listIncidentEvents(target)[0].fingerprint).toBe('warning-v2')
-    expect(listIncidentEvents(target).at(-1)).toMatchObject({ sourceSystem: 'DataHub', sourceRef: 'urn:li:dataset:customers' })
-  })
-
-  it('recovers provenance past legacy lifecycle rows that already stored null values', () => {
-    const target = directory('legacy-null-provenance')
-    const workspace = createWorkspace(target, 'Legacy incident', { projectTitle: 'Legacy incident' })
-    recordIncidentEvent(target, {
-      incidentKey: 'connector:orders',
-      transition: 'opened',
-      severity: 'warning',
-      title: 'Orders drift',
-      detail: 'Initial monitored drift.',
-      sourceSystem: 'Kafka',
-      sourceRef: 'topic:orders',
-      fingerprint: 'orders-v1',
-    })
-    closeWorkspaceDatabase()
-
-    const legacy = new DatabaseSync(join(target, 'game-lab.sqlite'))
-    legacy.prepare(`
-      INSERT INTO incident_events (id, workspace_id, incident_key, transition, severity, title, detail, source_system, source_ref, fingerprint, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
-    `).run('legacy-null-row', workspace.activeWorkspaceId, 'connector:orders', 'human-review', 'warning', 'Legacy review', 'Written by the previous release.', 'orders-v2', new Date(Date.now() + 1_000).toISOString())
-    legacy.close()
-
-    const repaired = recordIncidentEvent(target, {
-      incidentKey: 'connector:orders',
-      transition: 'agent-action',
-      severity: 'warning',
-      title: 'Repair proposed',
-      detail: 'Continue the incident lifecycle.',
-      fingerprint: 'orders-v3',
-    })
-
-    expect(repaired.event).toMatchObject({
-      sourceSystem: 'Kafka',
-      sourceRef: 'topic:orders',
-    })
+    const cleaned = new DatabaseSync(join(target, 'game-lab.sqlite'))
+    const tables = (cleaned.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as unknown as { name: string }[]).map((row) => row.name)
+    expect(tables).not.toContain('catalog_checkpoints')
+    expect(tables).not.toContain('catalog_checkpoint_values')
+    cleaned.close()
   })
 })

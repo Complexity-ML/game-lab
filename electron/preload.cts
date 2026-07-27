@@ -1,21 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-const statusChannel = 'game-lab:datahub-status'
-const datasetChannel = 'game-lab:datahub-dataset'
-const mcpStatusChannel = 'game-lab:datahub-mcp-status'
-const mcpConnectChannel = 'game-lab:datahub-mcp-connect'
-const mcpSettingsSaveChannel = 'game-lab:datahub-mcp-settings-save'
-const mcpAuditChannel = 'game-lab:datahub-mcp-audit'
-const mcpSearchChannel = 'game-lab:datahub-mcp-search'
-const mcpInspectChannel = 'game-lab:datahub-mcp-inspect'
-const mcpInvalidateChannel = 'game-lab:datahub-mcp-invalidate'
-const mcpWritebackChannel = 'game-lab:datahub-mcp-writeback'
-const catalogConnectorsListChannel = 'game-lab:catalog-connectors-list'
-const catalogConnectorSaveChannel = 'game-lab:catalog-connector-save'
-const catalogConnectorDeleteChannel = 'game-lab:catalog-connector-delete'
-const catalogConnectorTestChannel = 'game-lab:catalog-connector-test'
-const catalogSearchChannel = 'game-lab:catalog-search'
-const catalogInspectChannel = 'game-lab:catalog-inspect'
 const humanReviewNotificationChannel = 'game-lab:human-review-notification'
 const windowStateChannel = 'game-lab:window-state'
 const windowStateChangedChannel = 'game-lab:window-state-changed'
@@ -43,8 +27,6 @@ const workspaceOpenChannel = 'game-lab:workspace-open'
 const workspaceAutosaveChannel = 'game-lab:workspace-autosave'
 const workspaceCommitChannel = 'game-lab:workspace-commit'
 const workspaceRecoveryChannel = 'game-lab:workspace-recovery'
-const catalogCheckpointLoadChannel = 'game-lab:catalog-checkpoint-load'
-const catalogCheckpointSaveChannel = 'game-lab:catalog-checkpoint-save'
 const proposalMemoryListChannel = 'game-lab:proposal-memory-list'
 const proposalMemoryRememberChannel = 'game-lab:proposal-memory-remember'
 const proposalMemoryStatusChannel = 'game-lab:proposal-memory-status'
@@ -74,25 +56,9 @@ const gameBridgeActionChannel = 'game-lab:game-bridge-action'
 const gameBridgeStopChannel = 'game-lab:game-bridge-stop'
 const gameBridgeCheckpointsChannel = 'game-lab:game-bridge-checkpoints'
 
-contextBridge.exposeInMainWorld('dataLab', {
+contextBridge.exposeInMainWorld('gameLab', {
   runtime: 'electron',
   platform: process.platform,
-  getDataHubStatus: () => ipcRenderer.invoke(statusChannel),
-  loadDatasetContext: (urn: string) => ipcRenderer.invoke(datasetChannel, { urn }),
-  getDataHubMcpStatus: () => ipcRenderer.invoke(mcpStatusChannel),
-  connectDataHubMcp: () => ipcRenderer.invoke(mcpConnectChannel),
-  saveDataHubMcpSettings: (payload: { transport: 'http' | 'stdio'; url: string; catalogReadRoute?: 'auto' | 'gms' | 'mcp'; token?: string; clearToken?: boolean; writebackEnabled?: boolean }) => ipcRenderer.invoke(mcpSettingsSaveChannel, payload),
-  auditDataHubWithMcp: (urn: string, force = false) => ipcRenderer.invoke(mcpAuditChannel, { urn, force }),
-  searchDataHubAssets: (query: string) => ipcRenderer.invoke(mcpSearchChannel, { query }),
-  inspectDataHubAsset: (urn: string, force = false, mode: 'summary' | 'deep' = 'deep') => ipcRenderer.invoke(mcpInspectChannel, { urn, force, mode }),
-  invalidateDataHubContext: (urn?: string) => ipcRenderer.invoke(mcpInvalidateChannel, { urn }),
-  writeDataHubDecision: (payload: { revisionId: string; title: string; rationale: string; author: string; relatedAssets: string[] }) => ipcRenderer.invoke(mcpWritebackChannel, payload),
-  listCatalogConnectors: () => ipcRenderer.invoke(catalogConnectorsListChannel),
-  saveCatalogConnector: (payload: unknown) => ipcRenderer.invoke(catalogConnectorSaveChannel, payload),
-  deleteCatalogConnector: (id: string) => ipcRenderer.invoke(catalogConnectorDeleteChannel, { id }),
-  testCatalogConnector: (id: string) => ipcRenderer.invoke(catalogConnectorTestChannel, { id }),
-  searchCatalogAssets: (query: string) => ipcRenderer.invoke(catalogSearchChannel, { query }),
-  inspectCatalogAsset: (connectorId: string, assetRef: string, force = false, mode: 'summary' | 'deep' = 'deep') => ipcRenderer.invoke(catalogInspectChannel, { connectorId, assetRef, force, mode }),
   notifyHumanReview: (payload: { cardLabel: string; reason: string; versionId?: string; remind?: boolean }) => ipcRenderer.invoke(humanReviewNotificationChannel, payload),
   getAiStatus: () => ipcRenderer.invoke(aiStatusChannel),
   saveAiSettings: (payload: unknown) => ipcRenderer.invoke(aiSaveChannel, payload),
@@ -117,8 +83,6 @@ contextBridge.exposeInMainWorld('dataLab', {
   autosaveWorkspace: (workspace: unknown) => ipcRenderer.invoke(workspaceAutosaveChannel, workspace),
   commitWorkspace: (workspace: unknown) => ipcRenderer.invoke(workspaceCommitChannel, workspace),
   resolveWorkspaceRecovery: (action: 'recover' | 'discard') => ipcRenderer.invoke(workspaceRecoveryChannel, { action }),
-  loadCatalogCheckpoint: (key: string) => ipcRenderer.invoke(catalogCheckpointLoadChannel, { key }),
-  saveCatalogCheckpoint: (key: string, progress: unknown) => ipcRenderer.invoke(catalogCheckpointSaveChannel, { key, progress }),
   listAgentProposalMemory: () => ipcRenderer.invoke(proposalMemoryListChannel),
   rememberAgentProposal: (proposal: unknown) => ipcRenderer.invoke(proposalMemoryRememberChannel, proposal),
   updateAgentProposalMemoryStatus: (graphFingerprint: string, status: string, versionId?: string) => ipcRenderer.invoke(proposalMemoryStatusChannel, { graphFingerprint, status, versionId }),

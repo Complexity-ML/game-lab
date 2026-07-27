@@ -1,6 +1,5 @@
 import { addEdge, reconnectEdge, type Connection, type Edge } from '@xyflow/react'
 import { useRef, type Dispatch, type DragEvent, type SetStateAction } from 'react'
-import type { DataHubAssetSummary } from '../domain/datahub'
 import { incidentDiagramNodeIds } from '../domain/incident-diagram'
 import { createPipelineExport, parsePipelineExport } from '../domain/pipeline-io'
 import { cardLabels, newCard, type AgentProposal, type CardKind, type PipelineNode } from '../domain/pipeline'
@@ -15,7 +14,6 @@ export interface PipelineFlowInstance {
 export function usePipelineInteractions(options: {
   edges: Edge[]
   inspectorOpen: boolean
-  invalidateDataHubContext(urn?: string): Promise<unknown>
   libraryOpen: boolean
   nodes: PipelineNode[]
   persistImportedWorkspace(input: {
@@ -44,7 +42,7 @@ export function usePipelineInteractions(options: {
     if (!connection.source || !connection.target) return
     const feedback = connection.sourceHandle === 'feedback'
     options.setEdges((current) => addEdge({ ...connection, id: `e-${connection.source}-${connection.target}-${Date.now()}`, type: 'elastic', label: feedback ? 'next iteration' : undefined }, current))
-    options.setActivity(feedback ? 'Feedback boundary added · each trigger starts a new bounded atomic iteration' : 'Manual lineage connection added · run validation before publishing')
+    options.setActivity(feedback ? 'Feedback boundary added · each trigger starts a new bounded atomic iteration' : 'Manual workflow connection added · run validation before publishing')
   }
 
   const onReconnect = (oldEdge: Edge, connection: Connection) => {
@@ -53,7 +51,7 @@ export function usePipelineInteractions(options: {
     options.setEdges((current) => reconnectEdge(oldEdge, connection, current, { shouldReplaceId: false }).map((edge) => edge.id === oldEdge.id
       ? { ...edge, type: 'elastic', label: feedback ? 'next iteration' : undefined }
       : edge))
-    options.setActivity(feedback ? 'Feedback cable reconnected · next bounded iteration preserved' : 'Elastic cable reconnected · lineage validation refreshed')
+    options.setActivity(feedback ? 'Feedback cable reconnected · next bounded iteration preserved' : 'Elastic cable reconnected · workflow validation refreshed')
   }
 
   const addCard = (kind: CardKind, position?: { x: number; y: number }) => {
@@ -84,38 +82,6 @@ export function usePipelineInteractions(options: {
     }
     void flowInstance.current?.fitView({ duration: 260, padding: 0.24, nodes: nodeIds.map((id) => ({ id })) })
     options.setActivity(`Incident workstream focused · ${nodeIds.length} cards across its parallel branches`)
-  }
-
-  const bindDataHubSource = (asset: DataHubAssetSummary) => {
-    if (!options.selected || options.selected.data.kind !== 'source') return
-    const selected = options.selected
-    const previousUrn = selected.data.datahubUrn
-    options.setNodes((current) => current.map((node) => node.id === selected.id ? {
-      ...node,
-      data: {
-        ...node.data,
-        connectorId: asset.connectorId ?? 'datahub',
-        sourceSystem: asset.sourceSystem ?? 'DataHub',
-        assetRef: asset.assetRef ?? asset.urn,
-        datahubUrn: (asset.connectorId ?? 'datahub') === 'datahub' ? asset.urn : undefined,
-        datahubPlatform: asset.platform,
-        datahubEnvironment: asset.environment,
-        datahubDomain: asset.domain,
-        datahubTags: asset.tags,
-        datahubQuality: asset.qualityStatus,
-        datahubFreshness: asset.freshness,
-        datahubUpstream: asset.upstream,
-        datahubDownstream: asset.downstream,
-        label: asset.name,
-        description: asset.description,
-        owner: asset.owners[0] ?? 'Unassigned',
-        schema: asset.fields,
-        status: asset.qualityStatus === 'failing' || asset.owners.length === 0 ? 'warning' : 'healthy',
-      },
-    } : node))
-    if (previousUrn && previousUrn !== asset.urn) void options.invalidateDataHubContext(previousUrn)
-    void options.invalidateDataHubContext(asset.urn)
-    options.setActivity(`${asset.name} bound atomically · ${asset.fields.length} fields · ${asset.downstream.length} downstream assets · fresh MCP read required before agent execution`)
   }
 
   const deleteCard = (nodeId: string) => {
@@ -176,7 +142,6 @@ export function usePipelineInteractions(options: {
 
   return {
     addCard,
-    bindDataHubSource,
     deleteCard,
     dropLibraryCard,
     exportPipelineJson,
