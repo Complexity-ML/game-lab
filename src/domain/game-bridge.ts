@@ -6,7 +6,7 @@ export const gameActionTypes = [
 
 export type GameActionType = typeof gameActionTypes[number]
 export type GameObservationSource = 'manual' | 'startup' | 'autonomous_loop' | 'post_action' | 'card_rework'
-export type GameActivityState = 'connecting' | 'safe' | 'threat_detected' | 'evading' | 'acting' | 'blocked' | 'stopped' | 'disconnected'
+export type GameActivityState = 'connecting' | 'safe' | 'threat_detected' | 'defending' | 'evading' | 'acting' | 'blocked' | 'stopped' | 'disconnected'
 
 export interface GameActionArguments {
   targetX?: number

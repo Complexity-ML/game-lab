@@ -64,7 +64,7 @@ export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
         ? 'low' as const
         : 'none' as const
   const nearestHostile = hostileEntities[0]
-  const activityState = ['evading', 'acting', 'blocked', 'stopped', 'connecting', 'disconnected'].includes(runtime.stage)
+  const activityState = ['defending', 'evading', 'acting', 'blocked', 'stopped', 'connecting', 'disconnected'].includes(runtime.stage)
     ? runtime.stage
     : threatLevel === 'none'
       ? 'safe'

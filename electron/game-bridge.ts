@@ -10,7 +10,7 @@ const actionTypes = new Set([
   'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item',
   'wait', 'stop',
 ])
-const activityStates = new Set(['connecting', 'safe', 'threat_detected', 'evading', 'acting', 'blocked', 'stopped', 'disconnected'])
+const activityStates = new Set(['connecting', 'safe', 'threat_detected', 'defending', 'evading', 'acting', 'blocked', 'stopped', 'disconnected'])
 const observationSources = new Set(['manual', 'startup', 'autonomous_loop', 'post_action', 'card_rework'])
 
 type SettingsStore = {
@@ -136,7 +136,7 @@ function normalizeObservation(value: unknown) {
     ? rawActivity.nearestHostile as JsonRecord
     : undefined
   const fallbackActivityState = threatLevel === 'none' ? 'safe' : 'threat_detected'
-  const activityState = activityStates.has(String(rawActivity?.state)) ? String(rawActivity?.state) as 'connecting' | 'safe' | 'threat_detected' | 'evading' | 'acting' | 'blocked' | 'stopped' | 'disconnected' : fallbackActivityState
+  const activityState = activityStates.has(String(rawActivity?.state)) ? String(rawActivity?.state) as 'connecting' | 'safe' | 'threat_detected' | 'defending' | 'evading' | 'acting' | 'blocked' | 'stopped' | 'disconnected' : fallbackActivityState
   const activitySource = observationSources.has(String(rawActivity?.source)) ? String(rawActivity?.source) as 'manual' | 'startup' | 'autonomous_loop' | 'post_action' | 'card_rework' : 'manual'
   const activity = {
     state: activityState,

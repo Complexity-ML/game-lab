@@ -4,7 +4,7 @@ import pathfinderModule from 'mineflayer-pathfinder'
 import { Vec3 } from 'vec3'
 import type { AdapterConfig } from './config.js'
 import type { ActionArguments, ActionCommand } from './protocol.js'
-import { defensiveRetreatTarget, isHostileMob } from './safety.js'
+import { defensiveResponse, defensiveRetreatTarget, isHostileMob, reconnectDelay } from './safety.js'
 
 const faceVectors = {
   up: new Vec3(0, 1, 0),
@@ -27,7 +27,7 @@ function requireName(value: string | undefined, label: string) {
 }
 
 export class MinecraftController {
-  readonly bot: Bot
+  bot: Bot
   private movements?: InstanceType<typeof Movements>
   private generation = 0
   private queue: Promise<void> = Promise.resolve()
@@ -36,49 +36,89 @@ export class MinecraftController {
   private lastAction = 'Waiting for Minecraft connection'
   private stageChangedAt = new Date().toISOString()
   private lastHealth = 20
-  private defensiveRetreatGeneration = 0
+  private defensiveResponseGeneration = 0
   private defensiveRetreatCooldownUntil = 0
+  private defensiveCombatEntityId?: number
+  private nextDefensiveAttackAt = 0
   private safetyReflexEnabled = true
+  private connectionGeneration = 0
+  private reconnectAttempt = 0
+  private reconnectEnabled = true
+  private reconnectTimer?: NodeJS.Timeout
 
   constructor(readonly config: AdapterConfig) {
-    this.bot = mineflayer.createBot({
-      host: config.minecraftHost,
-      port: config.minecraftPort,
-      username: config.username,
-      auth: config.auth,
-      ...(config.version ? { version: config.version } : {}),
+    this.bot = this.connect()
+  }
+
+  private connect() {
+    const connectionGeneration = ++this.connectionGeneration
+    const reconnecting = this.reconnectAttempt > 0
+    this.connected = false
+    this.updateActivity('connecting', reconnecting
+      ? `Minecraft reconnect attempt ${this.reconnectAttempt}`
+      : 'Connecting to Minecraft')
+    const bot = mineflayer.createBot({
+      host: this.config.minecraftHost,
+      port: this.config.minecraftPort,
+      username: this.config.username,
+      auth: this.config.auth,
+      ...(this.config.version ? { version: this.config.version } : {}),
+      respawn: true,
     })
-    this.bot.loadPlugin(pathfinder)
-    this.bot.once('spawn', () => {
-      this.movements = new Movements(this.bot)
+    bot.loadPlugin(pathfinder)
+    let spawnCount = 0
+    bot.on('spawn', () => {
+      if (connectionGeneration !== this.connectionGeneration) return
+      spawnCount += 1
+      this.movements = new Movements(bot)
       this.movements.canDig = true
-      this.bot.pathfinder.setMovements(this.movements)
+      bot.pathfinder.setMovements(this.movements)
       this.connected = true
-      this.lastHealth = this.bot.health
+      this.lastHealth = bot.health
       this.safetyReflexEnabled = true
-      this.updateActivity('observing', 'Minecraft bot spawned')
+      this.reconnectAttempt = 0
+      this.updateActivity('observing', spawnCount > 1
+        ? 'Minecraft bot respawned · mission recovery ready'
+        : reconnecting
+          ? 'Minecraft bot reconnected · fresh observation required'
+          : 'Minecraft bot spawned')
     })
-    this.bot.on('health', () => {
-      const lostHealth = this.bot.health < this.lastHealth
-      this.lastHealth = this.bot.health
-      if (lostHealth) this.beginDefensiveRetreat()
+    bot.on('death', () => {
+      if (connectionGeneration !== this.connectionGeneration) return
+      this.connected = false
+      this.generation += 1
+      this.clearDefensiveCombat()
+      this.updateActivity('blocked', 'Minecraft bot died · automatic respawn pending')
     })
-    this.bot.on('goal_reached', () => {
+    bot.on('health', () => {
+      if (connectionGeneration !== this.connectionGeneration) return
+      const lostHealth = bot.health < this.lastHealth
+      this.lastHealth = bot.health
+      if (lostHealth) this.beginDefensiveResponse()
+    })
+    bot.on('physicsTick', () => {
+      if (connectionGeneration === this.connectionGeneration) this.tickDefensiveCombat()
+    })
+    bot.on('goal_reached', () => {
+      if (connectionGeneration !== this.connectionGeneration) return
       if (this.stage === 'evading') {
         this.updateActivity('observing', 'Defensive retreat completed')
       }
     })
-    this.bot.on('end', (reason) => {
-      this.connected = false
-      this.updateActivity('disconnected', `Minecraft disconnected: ${reason}`)
+    bot.on('end', (reason) => {
+      if (connectionGeneration !== this.connectionGeneration) return
+      this.handleDisconnect(`Minecraft disconnected: ${reason}`)
     })
-    this.bot.on('kicked', (reason) => {
-      this.connected = false
-      this.updateActivity('blocked', `Minecraft kicked: ${typeof reason === 'string' ? reason : JSON.stringify(reason)}`.slice(0, 500))
+    bot.on('kicked', (reason) => {
+      if (connectionGeneration !== this.connectionGeneration) return
+      this.handleDisconnect(`Minecraft kicked: ${typeof reason === 'string' ? reason : JSON.stringify(reason)}`.slice(0, 500))
     })
-    this.bot.on('error', (error) => {
+    bot.on('error', (error) => {
+      if (connectionGeneration !== this.connectionGeneration) return
       this.updateActivity('blocked', `Minecraft error: ${error.message}`.slice(0, 500))
+      if (!this.connected) this.scheduleReconnect()
     })
+    return bot
   }
 
   status() {
@@ -87,7 +127,7 @@ export class MinecraftController {
 
   enqueue(command: ActionCommand) {
     const generation = this.generation
-    const defensiveRetreatGeneration = this.defensiveRetreatGeneration
+    const defensiveResponseGeneration = this.defensiveResponseGeneration
     if (command.action !== 'stop') this.safetyReflexEnabled = true
     this.updateActivity('acting', `${command.action} queued`)
     const action = this.queue.then(async () => {
@@ -98,8 +138,8 @@ export class MinecraftController {
         }
       })
     const tracked = action.catch((error) => {
-      if (this.defensiveRetreatGeneration !== defensiveRetreatGeneration) {
-        this.updateActivity('evading', `${command.action} interrupted by defensive retreat`)
+      if (this.defensiveResponseGeneration !== defensiveResponseGeneration) {
+        this.updateActivity(this.defensiveCombatEntityId === undefined ? 'evading' : 'defending', `${command.action} interrupted by defensive safety response`)
         return
       }
       if (generation === this.generation) {
@@ -122,22 +162,118 @@ export class MinecraftController {
     return this.lastAction
   }
 
-  private beginDefensiveRetreat() {
-    if (!this.connected || !this.safetyReflexEnabled || Date.now() < this.defensiveRetreatCooldownUntil) return
-    const hostile = Object.values(this.bot.entities)
+  shutdown() {
+    this.reconnectEnabled = false
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = undefined
+    this.emergencyStop()
+    this.bot.quit('GAME LAB bridge stopped')
+  }
+
+  private handleDisconnect(reason: string) {
+    if (!this.connected && this.reconnectTimer) return
+    this.connected = false
+    this.generation += 1
+    this.clearDefensiveCombat()
+    this.updateActivity('disconnected', reason)
+    this.scheduleReconnect()
+  }
+
+  private scheduleReconnect() {
+    if (!this.reconnectEnabled || this.reconnectTimer) return
+    const delay = reconnectDelay(++this.reconnectAttempt)
+    this.updateActivity('connecting', `Minecraft reconnect scheduled in ${delay / 1_000}s · attempt ${this.reconnectAttempt}`)
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined
+      if (!this.reconnectEnabled) return
+      this.bot = this.connect()
+    }, delay)
+    this.reconnectTimer.unref()
+  }
+
+  private hostileEntities() {
+    return Object.values(this.bot.entities)
       .filter((entity) => entity !== this.bot.entity
         && entity.type !== 'player'
         && entity.position
         && isHostileMob(entity.name ?? entity.displayName ?? entity.type))
-      .sort((left, right) => left.position.distanceTo(this.bot.entity.position) - right.position.distanceTo(this.bot.entity.position))[0]
+      .sort((left, right) => left.position.distanceTo(this.bot.entity.position) - right.position.distanceTo(this.bot.entity.position))
+  }
+
+  private heldWeapon() {
+    return this.bot.inventory.items()
+      .filter((item) => /(?:_sword|_axe|trident)$/.test(item.name))
+      .sort((left, right) => {
+        const priority = (name: string) => name.endsWith('_sword') ? 0 : name === 'trident' ? 1 : 2
+        return priority(left.name) - priority(right.name)
+      })[0]
+  }
+
+  private beginDefensiveResponse() {
+    if (!this.connected || !this.safetyReflexEnabled || Date.now() < this.defensiveRetreatCooldownUntil) return
+    const hostiles = this.hostileEntities()
+    const hostile = hostiles[0]
     if (!hostile) return
-    const target = defensiveRetreatTarget(this.bot.entity.position, hostile.position)
-    this.defensiveRetreatGeneration += 1
+    const weapon = this.heldWeapon()
+    const response = defensiveResponse({
+      health: this.bot.health,
+      hostileCount: hostiles.length,
+      nearestDistance: hostile.position.distanceTo(this.bot.entity.position),
+      nearestName: hostile.name ?? hostile.displayName ?? hostile.type,
+      hasWeapon: Boolean(weapon),
+    })
+    this.defensiveResponseGeneration += 1
     this.defensiveRetreatCooldownUntil = Date.now() + 2_000
     this.bot.stopDigging()
     this.bot.deactivateItem()
+    if (response === 'fight') {
+      this.defensiveCombatEntityId = hostile.id
+      this.nextDefensiveAttackAt = 0
+      if (weapon) void this.bot.equip(weapon, 'hand').catch(() => undefined)
+      this.bot.pathfinder.setGoal(new goals.GoalFollow(hostile, 2))
+      this.updateActivity('defending', `Defensive combat against ${hostile.name ?? hostile.displayName ?? 'hostile mob'} · health ${this.bot.health}`)
+      return
+    }
+    this.clearDefensiveCombat()
+    const target = defensiveRetreatTarget(this.bot.entity.position, hostile.position)
     this.bot.pathfinder.setGoal(new goals.GoalNear(target.x, target.y, target.z, 2))
-    this.updateActivity('evading', `Defensive retreat from ${hostile.name ?? hostile.displayName ?? 'hostile mob'} toward ${target.x},${target.y},${target.z}`)
+    this.updateActivity('evading', `Defensive retreat from ${hostile.name ?? hostile.displayName ?? 'hostile mob'} · ${hostiles.length} hostile · health ${this.bot.health} · target ${target.x},${target.y},${target.z}`)
+  }
+
+  private clearDefensiveCombat() {
+    this.defensiveCombatEntityId = undefined
+    this.nextDefensiveAttackAt = 0
+  }
+
+  private tickDefensiveCombat() {
+    if (!this.connected || this.defensiveCombatEntityId === undefined || this.stage !== 'defending') return
+    const target = this.bot.entities[this.defensiveCombatEntityId]
+    if (!target || !target.position || !isHostileMob(target.name ?? target.displayName ?? target.type)) {
+      this.clearDefensiveCombat()
+      this.bot.pathfinder.setGoal(null)
+      this.updateActivity('observing', 'Defensive combat completed · threat cleared')
+      return
+    }
+    if (this.bot.health < 10 || this.hostileEntities().length > 1) {
+      this.defensiveRetreatCooldownUntil = 0
+      this.beginDefensiveResponse()
+      return
+    }
+    const distance = target.position.distanceTo(this.bot.entity.position)
+    if (distance > 6) {
+      this.clearDefensiveCombat()
+      this.bot.pathfinder.setGoal(null)
+      this.updateActivity('observing', 'Defensive combat completed · threat moved away')
+      return
+    }
+    if (distance > 3.2) {
+      this.bot.pathfinder.setGoal(new goals.GoalFollow(target, 2))
+      return
+    }
+    this.bot.pathfinder.setGoal(null)
+    if (Date.now() < this.nextDefensiveAttackAt) return
+    this.nextDefensiveAttackAt = Date.now() + 650
+    this.bot.attack(target)
   }
 
   private updateActivity(stage: string, lastAction: string) {

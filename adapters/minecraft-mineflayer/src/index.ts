@@ -7,7 +7,7 @@ try {
   const controller = new MinecraftController(config)
   const server = startBridgeServer(config, controller)
   const stop = () => {
-    controller.emergencyStop()
+    controller.shutdown()
     server.close(() => process.exit(0))
   }
   process.once('SIGINT', stop)

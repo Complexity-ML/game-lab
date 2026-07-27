@@ -155,6 +155,25 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
     return { completed: true, receipt: undefined }
   }
 
+  const waitForGameBridgeRecovery = async (expectedPlayerSessionId: number, attempts = 30) => {
+    if (!window.gameLab) return false
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      if (playerSessionId.current !== expectedPlayerSessionId || autonomousSchedulingBlocked.current) return false
+      await new Promise((resolve) => window.setTimeout(resolve, 1_000))
+      const recovered = await window.gameLab.getGameBridgeStatus()
+        .then((status) => status.mode === 'connected')
+        .catch(() => false)
+      if (recovered) {
+        recordActivity(`Game Bridge reconnected · attempt ${attempt} · fresh observation scheduled`)
+        return true
+      }
+      if (attempt === 1 || attempt % 5 === 0) {
+        setActivity(`Minecraft reconnecting… ${attempt}s · autonomous mission waiting safely`)
+      }
+    }
+    return false
+  }
+
   const auditWithAgent = async (requestedObjective = defaultBlankObjective, expectedPlayerSessionId?: number) => {
     const objective = resolveAgentObjective(requestedObjective, { hasGraph: nodes.length > 0, matchedSource: nodes.some((node) => node.data.kind === 'server' || node.data.kind === 'agent') })
     if (!objective.accepted) {
@@ -343,6 +362,23 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
           setActivity(`${response.model} selected ${gameActions[0].action} · executing autonomous mission action ${autonomousActionCount.current + 1}/${autonomousMissionActionBudget}…`)
           const execution = await executeGameActions(gameActions)
           if (!execution.completed) {
+            const recoverableDisconnect = /not connected|disconnect|reconnect|socket|ended/i.test(execution.receipt?.summary ?? '')
+            if (recoverableDisconnect && expectedPlayerSessionId !== undefined) {
+              setActivity('Minecraft connection lost · waiting for automatic Game Bridge recovery…')
+              recordActivity(`Game Bridge recovery started · ${execution.receipt?.summary ?? 'Minecraft disconnected'}`)
+              const recovered = await waitForGameBridgeRecovery(expectedPlayerSessionId)
+              if (recovered) {
+                autonomousNoProgressCount.current = 0
+                setActivity('Minecraft reconnected · reading a fresh checkpoint before resuming')
+                queueAutonomousStep(
+                  `Minecraft reconnected after an interrupted action. Read a fresh observation and safely resume "${observation.mission.objective}" without assuming the failed action completed.`,
+                  expectedPlayerSessionId,
+                  350,
+                )
+                return
+              }
+              if (playerSessionId.current !== expectedPlayerSessionId) return
+            }
             autonomousSchedulingBlocked.current = true
             setPlayerState('paused')
             setActivity(`Autonomous action ${execution.receipt?.action ?? 'unknown'} failed · ${execution.receipt?.summary ?? 'Game Bridge failure'} · mission paused`)
