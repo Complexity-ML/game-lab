@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { randomUUID } from 'node:crypto'
 import type { AdapterConfig } from './config.js'
 import { buildObservation } from './observation.js'
-import { isImmediateAction, parseActionCommand, protocol } from './protocol.js'
+import { ActionExecutionError, isImmediateAction, parseActionCommand, protocol } from './protocol.js'
 import type { MinecraftController } from './minecraft-controller.js'
 
 const MAX_BODY_BYTES = 64_000
@@ -91,17 +91,22 @@ export function startBridgeServer(config: AdapterConfig, controller: MinecraftCo
         }
         commandIds.add(command.commandId)
         try {
-          await controller.enqueue(command)
+          const report = await controller.enqueue(command)
           json(response, 200, {
             commandId: command.commandId,
             status: 'completed',
-            summary: `${command.action} completed against ${command.checkpointId}`,
+            summary: report?.summary ?? `${command.action} completed against ${command.checkpointId}`,
+            ...(report?.microActions ? { microActions: report.microActions } : {}),
+            ...(report?.crafting ? { crafting: report.crafting } : {}),
           })
         } catch (error) {
+          const report = error instanceof ActionExecutionError ? error.report : undefined
           json(response, 200, {
             commandId: command.commandId,
             status: 'failed',
             summary: `${command.action} failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500),
+            ...(report?.microActions ? { microActions: report.microActions } : {}),
+            ...(report?.crafting ? { crafting: report.crafting } : {}),
           })
         }
         return

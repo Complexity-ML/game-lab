@@ -63,7 +63,21 @@ describe('local structured Game Bridge', () => {
           },
         },
       },
-      { status: 'completed', summary: 'Movement completed' },
+      {
+        status: 'completed',
+        summary: 'Crafting Motor completed',
+        microActions: [
+          { id: 'event-1', kind: 'inventory', status: 'completed', summary: 'oak_log · required 3 · available 3 · missing 0', itemName: 'oak_log', count: 3, available: 3, missing: 0 },
+          { id: 'event-2', kind: 'craft', status: 'completed', summary: 'crafted wooden_pickaxe', itemName: 'wooden_pickaxe', count: 1 },
+        ],
+        crafting: {
+          targetItem: 'wooden_pickaxe',
+          requestedCount: 1,
+          feasible: true,
+          requiresTable: true,
+          ingredients: [{ itemName: 'oak_log', required: 3, available: 3, missing: 0, crafted: 0 }],
+        },
+      },
       { stopped: true, summary: 'Stopped immediately' },
       { resumed: true, summary: 'Autonomous mission armed · fresh checkpoint required' },
     ]
@@ -77,16 +91,22 @@ describe('local structured Game Bridge', () => {
     expect(observation).toMatchObject({ checkpointId: 'checkpoint-1', mission: { objective: 'Reach the marker' }, activity: { state: 'threat_detected', source: 'post_action', healthDelta: -2, hostileCount: 1, nearestHostile: { state: 'zombie', distance: 6 } }, nearby: [{ id: 'marker-1', position: { x: 12, y: 64, z: 20 } }], gameState: { kind: 'minecraft', food: 18, supportBlock: 'oak_leaves', surfaceState: 'canopy', inventory: [{ name: 'oak_log', count: 4 }], localMap: { radius: 1, diameter: 3, counts: { walkable: 1, hazard: 1 }, cells: [{ state: 'walkable' }, { state: 'hazard' }] } } })
 
     const receipt = await client.execute({
-      action: 'mine_block',
+      action: 'craft_item',
       checkpointId: observation.checkpointId,
-      arguments: { blockName: 'oak_log', maxDistance: 24 },
+      arguments: { itemName: 'wooden_pickaxe', count: 1 },
     })
-    expect(receipt).toMatchObject({ checkpointId: 'checkpoint-1', action: 'mine_block', status: 'completed' })
+    expect(receipt).toMatchObject({
+      checkpointId: 'checkpoint-1',
+      action: 'craft_item',
+      status: 'completed',
+      microActions: [{ kind: 'inventory', itemName: 'oak_log', missing: 0 }, { kind: 'craft', itemName: 'wooden_pickaxe' }],
+      crafting: { targetItem: 'wooden_pickaxe', feasible: true, requiresTable: true, ingredients: [{ itemName: 'oak_log', available: 3, missing: 0 }] },
+    })
     expect(await client.emergencyStop()).toMatchObject({ stopped: true, summary: 'Stopped immediately' })
     expect(await client.resume()).toMatchObject({ resumed: true, summary: expect.stringContaining('mission armed') })
     expect(checkpoints).toMatchObject([
       { kind: 'observation', checkpointId: 'checkpoint-1', status: 'captured', summary: expect.stringContaining('state=threat_detected; source=post_action') },
-      { kind: 'action', checkpointId: 'checkpoint-1', action: 'mine_block', status: 'completed' },
+      { kind: 'action', checkpointId: 'checkpoint-1', action: 'craft_item', status: 'completed' },
     ])
   })
 

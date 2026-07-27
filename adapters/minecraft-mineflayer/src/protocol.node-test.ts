@@ -40,4 +40,5 @@ test('action deadlines finish before the desktop bridge timeout', () => {
   assert.equal(actionTimeoutMs({ action: 'mine_block', arguments: {} }), 38_000)
   assert.equal(actionTimeoutMs({ action: 'move_to', arguments: {} }), 28_000)
   assert.equal(actionTimeoutMs({ action: 'wait', arguments: { durationMs: 60_000 } }), 62_000)
+  assert.equal(actionTimeoutMs({ action: 'craft_item', arguments: { itemName: 'wooden_pickaxe' } }), 150_000)
 })

@@ -17,7 +17,7 @@ export function actionTimeoutMs(command: Pick<ActionCommand, 'action' | 'argumen
   if (command.action === 'stop') return 1_000
   if (command.action === 'wait') return Math.min(62_000, (command.arguments.durationMs ?? 1_000) + 2_000)
   if (command.action === 'mine_block' || command.action === 'place_block') return 38_000
-  if (command.action === 'craft_item') return 30_000
+  if (command.action === 'craft_item') return 150_000
   return 28_000
 }
 
@@ -41,6 +41,36 @@ export interface ActionCommand {
   action: MinecraftAction
   arguments: ActionArguments
   requestedAt: string
+}
+
+export interface ActionMicroEvent {
+  id: string
+  kind: 'recipe' | 'inventory' | 'craft' | 'placement' | 'navigation' | 'tool' | 'mine' | 'validation'
+  status: 'planned' | 'running' | 'completed' | 'missing' | 'failed'
+  summary: string
+  itemName?: string
+  count?: number
+  available?: number
+  missing?: number
+}
+
+export interface ActionExecutionReport {
+  summary: string
+  microActions?: ActionMicroEvent[]
+  crafting?: {
+    targetItem: string
+    requestedCount: number
+    feasible: boolean
+    requiresTable: boolean
+    ingredients: Array<{ itemName: string; required: number; available: number; missing: number; crafted: number }>
+  }
+}
+
+export class ActionExecutionError extends Error {
+  constructor(message: string, readonly report: ActionExecutionReport) {
+    super(message)
+    this.name = 'ActionExecutionError'
+  }
 }
 
 type JsonRecord = Record<string, unknown>

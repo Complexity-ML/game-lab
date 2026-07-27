@@ -3,8 +3,10 @@ import minecraftData from 'minecraft-data'
 import pathfinderModule from 'mineflayer-pathfinder'
 import { Vec3 } from 'vec3'
 import type { AdapterConfig } from './config.js'
+import { planBotCrafting, type CraftingMotorPlan } from './crafting-motor.js'
+import { selectBestMiningTool } from './mining-tools.js'
 import { buildLocalNavigationMap } from './observation.js'
-import { actionTimeoutMs, isImmediateAction, type ActionArguments, type ActionCommand } from './protocol.js'
+import { ActionExecutionError, actionTimeoutMs, isImmediateAction, type ActionArguments, type ActionCommand, type ActionExecutionReport, type ActionMicroEvent } from './protocol.js'
 import { defensiveResponse, defensiveRetreatTarget, isHostileMob, navigationDescentCell, navigationRecoveryCell, reconnectDelay } from './safety.js'
 
 const faceVectors = {
@@ -161,13 +163,14 @@ export class MinecraftController {
     this.updateActivity('acting', `${command.action} queued`)
     const action = this.queue.then(async () => {
         if (generation !== this.generation) throw new Error('Action cancelled by emergency stop')
-        await this.executeWithDeadline(command, generation)
+        const report = await this.executeWithDeadline(command, generation)
         if (generation === this.generation) {
           const executionDetail = this.lastAction.startsWith('Controlled canopy descent completed')
             ? ` · ${this.lastAction}`
             : ''
           this.updateActivity('observing', `${command.action} completed${executionDetail}`)
         }
+        return report
       })
     const tracked = action.catch((error) => {
       if (this.defensiveResponseGeneration !== defensiveResponseGeneration) {
@@ -179,7 +182,7 @@ export class MinecraftController {
       }
       throw error
     })
-    this.queue = tracked.catch(() => undefined)
+    this.queue = tracked.then(() => undefined, () => undefined)
     return tracked
   }
 
@@ -187,7 +190,7 @@ export class MinecraftController {
     const deadlineMs = actionTimeoutMs(command)
     let timeout: NodeJS.Timeout | undefined
     try {
-      await Promise.race([
+      return await Promise.race([
         this.execute(command, generation),
         new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(() => {
@@ -515,7 +518,154 @@ export class MinecraftController {
     return found
   }
 
-  private async execute(command: ActionCommand, generation: number) {
+  private bestMiningTool(block: NonNullable<ReturnType<Bot['blockAt']>>) {
+    return selectBestMiningTool(block, this.bot.inventory.items())
+  }
+
+  private craftingTable() {
+    const data = minecraftData(this.bot.version)
+    const tableType = data.blocksByName.crafting_table?.id
+    return tableType === undefined ? null : this.bot.findBlock({ matching: tableType, maxDistance: 32 })
+  }
+
+  private async placeCraftingTable(generation: number, microActions: ActionMicroEvent[]) {
+    const existing = this.craftingTable()
+    if (existing) return existing
+    const tableItem = this.item('crafting_table')
+    const candidates = buildLocalNavigationMap(this.bot, 2).cells
+      .filter((cell) => cell.state === 'walkable' && (cell.offsetX !== 0 || cell.offsetZ !== 0))
+      .sort((left, right) => Math.abs(left.offsetX) + Math.abs(left.offsetZ) - Math.abs(right.offsetX) - Math.abs(right.offsetZ))
+    const candidate = candidates.find((cell) => {
+      const target = new Vec3(cell.position.x, cell.position.y, cell.position.z)
+      const reference = this.bot.blockAt(target.offset(0, -1, 0))
+      const current = this.bot.blockAt(target)
+      return reference?.boundingBox === 'block' && current?.boundingBox === 'empty'
+    })
+    if (!candidate) throw new Error('No safe adjacent position is available for the crafting table')
+    const target = new Vec3(candidate.position.x, candidate.position.y, candidate.position.z)
+    const reference = this.bot.blockAt(target.offset(0, -1, 0))
+    if (!reference) throw new Error('Crafting table placement reference is unavailable')
+    this.updateActivity('acting', `Crafting Motor · approaching safe table position ${target.x},${target.y},${target.z}`)
+    await this.gotoWithRecovery(target, generation, 2, true)
+    if (generation !== this.generation) throw new Error('Crafting table placement cancelled')
+    await this.bot.equip(tableItem, 'hand')
+    await this.bot.placeBlock(reference, faceVectors.up)
+    const placed = this.bot.blockAt(target)
+    if (!placed || placed.name !== 'crafting_table') throw new Error('Crafting table placement could not be validated')
+    microActions.push({
+      id: `craft-event-${microActions.length + 1}`,
+      kind: 'placement',
+      status: 'completed',
+      itemName: 'crafting_table',
+      count: 1,
+      summary: `Crafting table placed and validated at ${target.x},${target.y},${target.z}`,
+    })
+    return placed
+  }
+
+  private craftingReport(plan: CraftingMotorPlan, microActions: ActionMicroEvent[]): ActionExecutionReport {
+    return {
+      summary: plan.feasible
+        ? `Crafting Motor completed ${plan.requestedCount} ${plan.targetItem} through ${plan.steps.length} local steps`
+        : `Crafting Motor cannot craft ${plan.requestedCount} ${plan.targetItem}: ${plan.ingredients.filter((item) => item.missing > 0).map((item) => `${item.missing} ${item.itemName} missing`).join(', ')}`,
+      microActions,
+      crafting: {
+        targetItem: plan.targetItem,
+        requestedCount: plan.requestedCount,
+        feasible: plan.feasible,
+        requiresTable: plan.requiresTable,
+        ingredients: plan.ingredients,
+      },
+    }
+  }
+
+  private async executeCraftingMotor(itemName: string, count: number, generation: number): Promise<ActionExecutionReport> {
+    const plan = planBotCrafting(this.bot, itemName, count)
+    const microActions: ActionMicroEvent[] = [{
+      id: 'craft-event-1',
+      kind: 'recipe',
+      status: plan.feasible ? 'planned' : 'missing',
+      itemName,
+      count,
+      summary: `Recipe graph resolved · ${plan.steps.length} local steps · ${plan.requiresTable ? 'crafting table required' : 'inventory grid only'}`,
+    }]
+    for (const ingredient of plan.ingredients) {
+      microActions.push({
+        id: `craft-event-${microActions.length + 1}`,
+        kind: 'inventory',
+        status: ingredient.missing > 0 ? 'missing' : 'completed',
+        itemName: ingredient.itemName,
+        count: ingredient.required,
+        available: ingredient.available,
+        missing: ingredient.missing,
+        summary: `${ingredient.itemName} · required ${ingredient.required} · available ${ingredient.available} · crafted ${ingredient.crafted} · missing ${ingredient.missing}`,
+      })
+    }
+    if (!plan.feasible) {
+      const report = this.craftingReport(plan, microActions)
+      throw new ActionExecutionError(report.summary, report)
+    }
+    try {
+      for (const [index, step] of plan.steps.entries()) {
+        if (generation !== this.generation) throw new Error('Crafting Motor cancelled')
+        this.updateActivity('acting', `Crafting Motor · ${index + 1}/${plan.steps.length} · ${step.summary}`)
+        if (step.kind === 'place_table') {
+          await this.placeCraftingTable(generation, microActions)
+          continue
+        }
+        let table = step.requiresTable ? this.craftingTable() : null
+        if (step.requiresTable && !table) table = await this.placeCraftingTable(generation, microActions)
+        if (table) {
+          this.updateActivity('acting', `Crafting Motor · approaching crafting table for ${step.itemName}`)
+          await this.gotoWithRecovery(table.position, generation, 2, true)
+          microActions.push({
+            id: `craft-event-${microActions.length + 1}`,
+            kind: 'navigation',
+            status: 'completed',
+            itemName: step.itemName,
+            summary: `Reached crafting table for ${step.itemName}`,
+          })
+        }
+        const data = minecraftData(this.bot.version)
+        const itemType = data.itemsByName[step.itemName]?.id
+        if (itemType === undefined) throw new Error(`Unknown planned item ${step.itemName}`)
+        const recipe = this.bot.recipesFor(itemType, null, step.count, table)[0]
+        if (!recipe) throw new Error(`Recipe prerequisites changed before crafting ${step.itemName}`)
+        await this.bot.craft(recipe, step.operations ?? 1, table ?? undefined)
+        microActions.push({
+          id: `craft-event-${microActions.length + 1}`,
+          kind: 'craft',
+          status: 'completed',
+          itemName: step.itemName,
+          count: step.count,
+          summary: `${index + 1}/${plan.steps.length} · crafted ${step.count} ${step.itemName}${step.requiresTable ? ' at the crafting table' : ''}`,
+        })
+      }
+      microActions.push({
+        id: `craft-event-${microActions.length + 1}`,
+        kind: 'validation',
+        status: 'completed',
+        itemName,
+        count,
+        summary: `Inventory validated after crafting ${count} ${itemName}`,
+      })
+      return this.craftingReport(plan, microActions)
+    } catch (error) {
+      microActions.push({
+        id: `craft-event-${microActions.length + 1}`,
+        kind: 'validation',
+        status: 'failed',
+        itemName,
+        count,
+        summary: errorText(error),
+      })
+      const report = this.craftingReport({ ...plan, feasible: false }, microActions)
+      report.summary = `Crafting Motor failed while crafting ${itemName}: ${errorText(error)}`
+      throw new ActionExecutionError(report.summary, report)
+    }
+  }
+
+  private async execute(command: ActionCommand, generation: number): Promise<ActionExecutionReport | undefined> {
     if (!this.connected) throw new Error('Minecraft bot is not connected')
     const args = command.arguments
     if (command.action === 'stop') {
@@ -537,15 +687,40 @@ export class MinecraftController {
     }
     if (command.action === 'mine_block') {
       const block = this.block(args)
+      let selection
+      try {
+        selection = this.bestMiningTool(block)
+      } catch (error) {
+        const summary = errorText(error)
+        throw new ActionExecutionError(summary, {
+          summary,
+          microActions: [{
+            id: 'mine-event-1',
+            kind: 'tool',
+            status: 'missing',
+            summary,
+          }],
+        })
+      }
+      if (selection.item) await this.bot.equip(selection.item, 'hand')
       await this.gotoWithRecovery(block.position, generation, 3)
       if (generation !== this.generation) return
       await this.withOperationTimeout(
         this.bot.dig(block),
-        8_000,
-        `Mining ${block.name} timed out after 8 seconds · target may be blocked or stale`,
+        Math.max(8_000, Math.min(30_000, selection.digTime + 5_000)),
+        `Mining ${block.name} timed out · target may be blocked or stale`,
         () => this.bot.stopDigging(),
       )
-      return
+      const toolSummary = selection.item
+        ? `Selected ${selection.item.name} for ${block.name} · estimated ${selection.digTime}ms versus ${selection.handTime}ms by hand`
+        : `Mining ${block.name} by hand · no faster suitable tool is available`
+      return {
+        summary: `Mined ${block.name}${selection.item ? ` with ${selection.item.name}` : ' by hand'}`,
+        microActions: [
+          { id: 'mine-event-1', kind: 'tool', status: 'completed', itemName: selection.item?.name, summary: toolSummary },
+          { id: 'mine-event-2', kind: 'mine', status: 'completed', itemName: block.name, count: 1, summary: `Mined ${block.name} at ${block.position.x},${block.position.y},${block.position.z}` },
+        ],
+      }
     }
     if (command.action === 'place_block') {
       const target = coordinates(args)
@@ -562,16 +737,8 @@ export class MinecraftController {
     }
     if (command.action === 'craft_item') {
       const itemName = requireName(args.itemName, 'itemName')
-      const data = minecraftData(this.bot.version)
-      const itemType = data.itemsByName[itemName]?.id
-      if (itemType === undefined) throw new Error(`Unknown item ${itemName} for Minecraft ${this.bot.version}`)
       const count = args.count ?? 1
-      const craftingTable = this.bot.findBlock({ matching: data.blocksByName.crafting_table.id, maxDistance: 32 })
-      const recipes = this.bot.recipesFor(itemType, null, count, craftingTable)
-      const recipe = recipes[0]
-      if (!recipe) throw new Error(`No available recipe for ${count} ${itemName}`)
-      await this.bot.craft(recipe, count, craftingTable ?? undefined)
-      return
+      return this.executeCraftingMotor(itemName, count, generation)
     }
     if (command.action === 'equip_item') {
       await this.bot.equip(this.item(args.itemName), args.interaction === 'off-hand' ? 'off-hand' : 'hand')

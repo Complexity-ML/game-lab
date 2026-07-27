@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 export const GAME_BRIDGE_PROTOCOL = 'game-lab.control.v1' as const
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:4317'
 const TIMEOUT_MS = 4_000
-const ACTION_TIMEOUT_MS = 75_000
+const ACTION_TIMEOUT_MS = 180_000
 const MAX_RESPONSE_BYTES = 256_000
 const actionTypes = new Set([
   'move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle',
@@ -351,6 +351,40 @@ export class GameBridgeClient {
     const command = normalizeCommand(value)
     const response = record(await jsonRequest(endpoint, '/v1/actions', { method: 'POST', body: JSON.stringify(command) }, ACTION_TIMEOUT_MS), 'Game action receipt')
     const status = ['accepted', 'completed', 'rejected', 'failed', 'stopped'].includes(String(response.status)) ? response.status as 'accepted' | 'completed' | 'rejected' | 'failed' | 'stopped' : 'failed'
+    const microActionKinds = new Set(['recipe', 'inventory', 'craft', 'placement', 'navigation', 'tool', 'mine', 'validation'])
+    const microActionStatuses = new Set(['planned', 'running', 'completed', 'missing', 'failed'])
+    const microActions = Array.isArray(response.microActions) ? response.microActions.slice(0, 128).map((entry, index) => {
+      const event = record(entry, `Game action micro-event ${index + 1}`)
+      return {
+        id: optionalIdentifier(event.id, `Game action micro-event ${index + 1} id`) ?? `micro-event-${index + 1}`,
+        kind: microActionKinds.has(String(event.kind)) ? String(event.kind) as 'recipe' | 'inventory' | 'craft' | 'placement' | 'navigation' | 'tool' | 'mine' | 'validation' : 'validation' as const,
+        status: microActionStatuses.has(String(event.status)) ? String(event.status) as 'planned' | 'running' | 'completed' | 'missing' | 'failed' : 'failed' as const,
+        summary: boundedText(event.summary, `Game action micro-event ${index + 1} summary`, 500),
+        itemName: optionalIdentifier(event.itemName, `Game action micro-event ${index + 1} item name`),
+        count: optionalBoundedNumber(event.count, `Game action micro-event ${index + 1} count`, 0, 99_999),
+        available: optionalBoundedNumber(event.available, `Game action micro-event ${index + 1} available`, 0, 99_999),
+        missing: optionalBoundedNumber(event.missing, `Game action micro-event ${index + 1} missing`, 0, 99_999),
+      }
+    }) : undefined
+    const rawCrafting = response.crafting && typeof response.crafting === 'object' && !Array.isArray(response.crafting)
+      ? response.crafting as JsonRecord
+      : undefined
+    const crafting = rawCrafting ? {
+      targetItem: boundedText(rawCrafting.targetItem, 'Crafting target item', 100),
+      requestedCount: boundedNumber(rawCrafting.requestedCount, 'Crafting requested count', 1, 64),
+      feasible: rawCrafting.feasible === true,
+      requiresTable: rawCrafting.requiresTable === true,
+      ingredients: Array.isArray(rawCrafting.ingredients) ? rawCrafting.ingredients.slice(0, 64).map((entry, index) => {
+        const ingredient = record(entry, `Crafting ingredient ${index + 1}`)
+        return {
+          itemName: boundedText(ingredient.itemName, `Crafting ingredient ${index + 1} item`, 100),
+          required: boundedNumber(ingredient.required, `Crafting ingredient ${index + 1} required`, 0, 99_999),
+          available: boundedNumber(ingredient.available, `Crafting ingredient ${index + 1} available`, 0, 99_999),
+          missing: boundedNumber(ingredient.missing, `Crafting ingredient ${index + 1} missing`, 0, 99_999),
+          crafted: boundedNumber(ingredient.crafted, `Crafting ingredient ${index + 1} crafted`, 0, 99_999),
+        }
+      }) : [],
+    } : undefined
     const receipt = {
       commandId: command.commandId,
       checkpointId: command.checkpointId,
@@ -358,6 +392,8 @@ export class GameBridgeClient {
       status,
       summary: boundedText(response.summary, 'Game action receipt summary', 500, `${command.action} ${status}`),
       receivedAt: new Date().toISOString(),
+      ...(microActions ? { microActions } : {}),
+      ...(crafting ? { crafting } : {}),
     }
     this.checkpoints.save({
       kind: 'action',

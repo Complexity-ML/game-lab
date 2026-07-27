@@ -38,6 +38,23 @@ export interface GameActionReceipt {
   status: 'accepted' | 'completed' | 'rejected' | 'failed' | 'stopped'
   summary: string
   receivedAt: string
+  microActions?: Array<{
+    id: string
+    kind: 'recipe' | 'inventory' | 'craft' | 'placement' | 'navigation' | 'tool' | 'mine' | 'validation'
+    status: 'planned' | 'running' | 'completed' | 'missing' | 'failed'
+    summary: string
+    itemName?: string
+    count?: number
+    available?: number
+    missing?: number
+  }>
+  crafting?: {
+    targetItem: string
+    requestedCount: number
+    feasible: boolean
+    requiresTable: boolean
+    ingredients: Array<{ itemName: string; required: number; available: number; missing: number; crafted: number }>
+  }
 }
 
 export interface GameObservation {

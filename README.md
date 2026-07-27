@@ -19,7 +19,7 @@ Then open **Settings → Connections → Local Game Bridge**, keep `http://127.0
 
 ## Minecraft · Mineflayer adapter
 
-The production Minecraft adapter lives in `adapters/minecraft-mineflayer`. It connects one governed bot to a Minecraft Java 26.2 server through GAME LAB's standalone Mineflayer 26.2 stack, and exposes inventory, nearby blocks and entities, health, food, experience, dimension and mission state through the existing Game Bridge.
+The production Minecraft adapter lives in `adapters/minecraft-mineflayer`. It connects one governed bot to a Minecraft Java 26.2 server through GAME LAB's standalone Mineflayer 26.2 stack, and exposes inventory, nearby blocks and entities, health, food, experience, dimension and mission state through the existing Game Bridge. Its local Crafting Motor resolves full recipe dependencies from a final-item objective, reports available and missing ingredients, chains intermediate crafts, creates and safely places a crafting table when required, and validates every micro-action without another GPT call. Mining selects the fastest suitable tool already present in inventory and refuses harvest-sensitive work when no valid tool exists.
 
 Install and build it once:
 
@@ -49,7 +49,7 @@ Supported governed skills:
 - navigate to exact coordinates;
 - mine a verified block by coordinates or bounded nearby search;
 - place an inventory block against an explicit face;
-- craft and equip an available item;
+- recursively craft and equip items, including intermediate materials and crafting-table placement;
 - interact with or attack an entity from the current observation;
 - use the equipped item, wait, or stop immediately.
 

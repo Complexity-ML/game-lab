@@ -38,6 +38,14 @@ function MotorPlan({ plan }: { plan: GameMotorPlanView }) {
         <strong>{index + 1}. {step.action.replaceAll('_', ' ')}</strong>
         <p>{step.reason}</p>
         <small>{step.status} · {step.checkpointId}</small>
+        {step.crafting && <section className={`crafting-plan-summary ${step.crafting.feasible ? 'is-feasible' : 'has-missing'}`}>
+          <strong>{step.crafting.requestedCount}× {step.crafting.targetItem.replaceAll('_', ' ')}</strong>
+          <small>{step.crafting.requiresTable ? 'Crafting table required' : 'Inventory grid'} · recursive recipe</small>
+          <ul>{step.crafting.ingredients.map((ingredient) => <li className={ingredient.missing > 0 ? 'has-missing' : ''} key={ingredient.itemName}>
+            <span>{ingredient.itemName.replaceAll('_', ' ')}</span>
+            <b>{ingredient.available} available{ingredient.crafted ? ` · ${ingredient.crafted} crafted` : ''}{ingredient.missing ? ` · ${ingredient.missing} missing` : ''}</b>
+          </li>)}</ul>
+        </section>}
         {step.summary && <em>{step.summary}</em>}
       </div>
     </li>)}</ol>

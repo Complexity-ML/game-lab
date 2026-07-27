@@ -453,6 +453,14 @@ button { color: inherit; }
 .motor-plan-steps p, .motor-plan-steps em { margin: 0; color: var(--muted); font-size: 6.5px; font-style: normal; line-height: 1.4; overflow-wrap: anywhere; }
 .motor-plan-steps small { color: var(--faint); font: 5.8px ui-monospace, monospace; overflow-wrap: anywhere; }
 .motor-plan-steps em { padding-top: 3px; color: var(--text); border-top: 1px solid var(--line); }
+.crafting-plan-summary { display: flex; flex-direction: column; gap: 4px; padding: 7px; border: 1px solid color-mix(in srgb, #16a34a 35%, var(--line)); border-radius: 7px; background: color-mix(in srgb, #dcfce7 25%, var(--panel)); }
+.crafting-plan-summary.has-missing { border-color: var(--error-line); background: var(--error-surface); }
+.crafting-plan-summary > strong { font-size: 7px; text-transform: capitalize; }
+.crafting-plan-summary > small { font: 5.8px ui-monospace, monospace; }
+.crafting-plan-summary ul { display: flex; flex-direction: column; gap: 3px; margin: 2px 0 0; padding: 0; list-style: none; }
+.crafting-plan-summary li { display: flex; grid-template-columns: none; justify-content: space-between; gap: 8px; padding: 3px 4px; border: 0; border-radius: 4px; background: color-mix(in srgb, var(--panel) 72%, transparent); font-size: 5.8px; }
+.crafting-plan-summary li b { color: #15803d; font-weight: 800; text-align: right; }
+.crafting-plan-summary li.has-missing b { color: var(--error-text); }
 .live-log-list { display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 0; list-style: none; }
 .live-log-list li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
 .live-log-list li > span { display: grid; width: 22px; height: 22px; place-items: center; color: var(--accent); border-radius: 7px; background: var(--soft); }

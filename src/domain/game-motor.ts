@@ -14,6 +14,7 @@ export interface GameMotorPlanStep {
   reason: string
   status: GameMotorStepStatus
   summary?: string
+  crafting?: NonNullable<GameActionReceipt['crafting']>
 }
 
 export interface GameMotorPlanView {

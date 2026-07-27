@@ -12,7 +12,7 @@ import { ensureAutonomousSystemCards } from '../domain/autonomous-system'
 import { classifyConnectivityFailure } from '../domain/connectivity'
 import { recordDiagnostic } from '../domain/diagnostics'
 import { autonomousMissionActionBudget, autonomousProposalFingerprint, gameActionRequiresHumanReview, isRecoverableGameActionFailure, isStaleGameCheckpointFailure } from '../domain/game-autonomy'
-import type { GameObservation, GameObservationSource } from '../domain/game-bridge'
+import type { GameActionReceipt, GameObservation, GameObservationSource } from '../domain/game-bridge'
 import { createGameMotorPlan, gameMotorCheckpoint, gameMotorMaximumActions, type GameMotorExecutionResult, type GameMotorPlanStatus, type GameMotorPlanView, type GameMotorStepStatus } from '../domain/game-motor'
 import type { IncidentEventInput, IncidentSummary } from '../domain/incidents'
 import { defaultBlankObjective, resolveAgentObjective } from '../domain/agent-objective'
@@ -110,7 +110,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
     planId: string,
     index: number,
     status: GameMotorStepStatus,
-    details: { checkpointId?: string; summary?: string } = {},
+    details: { checkpointId?: string; summary?: string; crafting?: NonNullable<GameActionReceipt['crafting']> } = {},
     planStatus?: GameMotorPlanStatus,
   ) => {
     setMotorPlan((current) => {
@@ -232,7 +232,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       updateMotorStep(planId, index, 'running', { checkpointId: gameAction.checkpointId })
       setActivity(`GAME LAB Motor · action ${index + 1}/${plan.length} · ${gameAction.action.replaceAll('_', ' ')}`)
       recordActivity(`Motor action ${index + 1}/${plan.length} queued · ${gameAction.action.replaceAll('_', ' ')} · checkpoint ${gameAction.checkpointId}`)
-      let receipt = await window.gameLab.executeGameAction(gameAction).catch((error) => ({
+      let receipt: GameActionReceipt = await window.gameLab.executeGameAction(gameAction).catch((error): GameActionReceipt => ({
         commandId: gameAction.commandId,
         checkpointId: gameAction.checkpointId,
         action: gameAction.action,
@@ -280,6 +280,9 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         }
       }
       recordActivity(`Motor action ${index + 1}/${plan.length} ${receipt.status} · ${receipt.action.replaceAll('_', ' ')} · ${receipt.summary}`)
+      for (const event of receipt.microActions ?? []) {
+        recordActivity(`Crafting Motor · ${event.status} · ${event.summary}`)
+      }
       setNodes((current) => current.map((node) => node.id === gameAction.agentNodeId
         ? {
             ...node,
@@ -299,6 +302,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         updateMotorStep(planId, index, 'failed', {
           checkpointId: receipt.checkpointId,
           summary: receipt.summary,
+          crafting: receipt.crafting,
         }, 'failed')
         recordActivity('Defensive safety remains armed · only the operator Stop control can disable combat and retreat reflexes')
         return { completed: false, completedActions, receipt, observation: latestObservation }
@@ -307,6 +311,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       updateMotorStep(planId, index, receipt.status === 'completed' ? 'completed' : 'running', {
         checkpointId: receipt.checkpointId,
         summary: receipt.summary,
+        crafting: receipt.crafting,
       })
       if (receipt.status === 'completed' && plan.length === 1) {
         notifyToast(receipt.summary, 'success', `${receipt.action.replaceAll('_', ' ')} completed`)
