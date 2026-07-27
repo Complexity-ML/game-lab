@@ -13,6 +13,14 @@ export function isImmediateAction(action: MinecraftAction) {
   return action === 'stop'
 }
 
+export function actionTimeoutMs(command: Pick<ActionCommand, 'action' | 'arguments'>) {
+  if (command.action === 'stop') return 1_000
+  if (command.action === 'wait') return Math.min(62_000, (command.arguments.durationMs ?? 1_000) + 2_000)
+  if (command.action === 'mine_block' || command.action === 'place_block') return 38_000
+  if (command.action === 'craft_item') return 30_000
+  return 28_000
+}
+
 export interface ActionArguments {
   targetX?: number
   targetY?: number

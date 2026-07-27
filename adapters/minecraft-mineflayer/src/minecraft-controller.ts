@@ -3,7 +3,7 @@ import minecraftData from 'minecraft-data'
 import pathfinderModule from 'mineflayer-pathfinder'
 import { Vec3 } from 'vec3'
 import type { AdapterConfig } from './config.js'
-import { isImmediateAction, type ActionArguments, type ActionCommand } from './protocol.js'
+import { actionTimeoutMs, isImmediateAction, type ActionArguments, type ActionCommand } from './protocol.js'
 import { defensiveResponse, defensiveRetreatTarget, isHostileMob, reconnectDelay } from './safety.js'
 
 const faceVectors = {
@@ -160,7 +160,7 @@ export class MinecraftController {
     this.updateActivity('acting', `${command.action} queued`)
     const action = this.queue.then(async () => {
         if (generation !== this.generation) throw new Error('Action cancelled by emergency stop')
-        await this.execute(command, generation)
+        await this.executeWithDeadline(command, generation)
         if (generation === this.generation) {
           this.updateActivity('observing', `${command.action} completed`)
         }
@@ -177,6 +177,47 @@ export class MinecraftController {
     })
     this.queue = tracked.catch(() => undefined)
     return tracked
+  }
+
+  private async executeWithDeadline(command: ActionCommand, generation: number) {
+    const deadlineMs = actionTimeoutMs(command)
+    let timeout: NodeJS.Timeout | undefined
+    try {
+      await Promise.race([
+        this.execute(command, generation),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => {
+            if (generation === this.generation) this.generation += 1
+            this.bot.pathfinder?.setGoal(null)
+            this.bot.clearControlStates()
+            this.bot.stopDigging()
+            this.bot.deactivateItem()
+            const message = `${command.action} timed out after ${Math.round(deadlineMs / 1_000)} seconds · action cancelled`
+            this.updateActivity('blocked', message)
+            reject(new Error(message))
+          }, deadlineMs)
+        }),
+      ])
+    } finally {
+      if (timeout) clearTimeout(timeout)
+    }
+  }
+
+  private async withOperationTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string, onTimeout: () => void) {
+    let timeout: NodeJS.Timeout | undefined
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => {
+            onTimeout()
+            reject(new Error(message))
+          }, timeoutMs)
+        }),
+      ])
+    } finally {
+      if (timeout) clearTimeout(timeout)
+    }
   }
 
   emergencyStop() {
@@ -406,7 +447,12 @@ export class MinecraftController {
       const block = this.block(args)
       await this.gotoWithRecovery(block.position, generation, 3)
       if (generation !== this.generation) return
-      await this.bot.dig(block)
+      await this.withOperationTimeout(
+        this.bot.dig(block),
+        8_000,
+        `Mining ${block.name} timed out after 8 seconds · target may be blocked or stale`,
+        () => this.bot.stopDigging(),
+      )
       return
     }
     if (command.action === 'place_block') {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { loadConfig } from './config.js'
-import { isImmediateAction, parseActionCommand } from './protocol.js'
+import { actionTimeoutMs, isImmediateAction, parseActionCommand } from './protocol.js'
 
 test('private-server acknowledgment is mandatory', () => {
   assert.throws(() => loadConfig({}), /Refusing to start/)
@@ -34,4 +34,10 @@ test('stop is the only action that bypasses the action queue', () => {
   assert.equal(isImmediateAction('stop'), true)
   assert.equal(isImmediateAction('move_to'), false)
   assert.equal(isImmediateAction('jump'), false)
+})
+
+test('action deadlines finish before the desktop bridge timeout', () => {
+  assert.equal(actionTimeoutMs({ action: 'mine_block', arguments: {} }), 38_000)
+  assert.equal(actionTimeoutMs({ action: 'move_to', arguments: {} }), 28_000)
+  assert.equal(actionTimeoutMs({ action: 'wait', arguments: { durationMs: 60_000 } }), 62_000)
 })

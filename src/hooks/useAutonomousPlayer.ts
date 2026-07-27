@@ -384,10 +384,27 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
               }
               if (playerSessionId.current !== expectedPlayerSessionId) return
             }
+            const failureSummary = execution.receipt?.summary ?? 'Game Bridge failure'
+            const recoverableObstacle = /timed out|timeout|movement blocked|pathfinder|digging|target may be blocked|unreachable|no path/i.test(failureSummary)
+            if (recoverableObstacle && expectedPlayerSessionId !== undefined) {
+              autonomousNoProgressCount.current += 1
+              if (autonomousNoProgressCount.current <= 3) {
+                const attempt = autonomousNoProgressCount.current
+                recordActivity(`Action blocked · ${execution.receipt?.action ?? 'unknown'} · replanning from a fresh 5-block local map (${attempt}/3)`)
+                setActivity(`Minecraft route or target blocked · safe replan ${attempt}/3 from a fresh checkpoint`)
+                queueAutonomousStep(
+                  `The prior "${execution.receipt?.action ?? 'Minecraft'}" action failed safely: ${failureSummary}. Capture a fresh observation, inspect the 5-block localMap, and choose exactly one different safe recovery action. Prefer jump or an alternate reachable coordinate/target. Do not assume the failed action completed and do not repeat the same stale target unchanged.`,
+                  expectedPlayerSessionId,
+                  500,
+                )
+                return
+              }
+              recordActivity(`Safe replan limit reached · ${failureSummary} · operator intervention required`)
+            }
             autonomousSchedulingBlocked.current = true
             setPlayerState('paused')
-            setActivity(`Autonomous action ${execution.receipt?.action ?? 'unknown'} failed · ${execution.receipt?.summary ?? 'Game Bridge failure'} · mission paused`)
-            notifyToast(execution.receipt?.summary ?? 'The autonomous action failed.', 'error', 'Mission paused')
+            setActivity(`Autonomous action ${execution.receipt?.action ?? 'unknown'} failed · ${failureSummary} · mission paused`)
+            notifyToast(failureSummary, 'error', 'Mission paused')
             return
           }
           autonomousActionCount.current += gameActions.length
