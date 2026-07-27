@@ -19,7 +19,7 @@ Then open **Settings → Connections → Local Game Bridge**, keep `http://127.0
 
 ## Minecraft · Mineflayer adapter
 
-The production Minecraft adapter lives in `adapters/minecraft-mineflayer`. It connects one governed bot to a Minecraft Java server and exposes inventory, nearby blocks and entities, health, food, experience, dimension and mission state through the existing Game Bridge.
+The production Minecraft adapter lives in `adapters/minecraft-mineflayer`. It connects one governed bot to a Minecraft Java 26.2 server through GAME LAB's standalone Mineflayer 26.2 stack, and exposes inventory, nearby blocks and entities, health, food, experience, dimension and mission state through the existing Game Bridge.
 
 Install and build it once:
 
@@ -38,6 +38,7 @@ MINECRAFT_HOST=127.0.0.1 \
 MINECRAFT_PORT=25565 \
 MINECRAFT_USERNAME=GAME_LAB_Bot \
 MINECRAFT_AUTH=offline \
+MINECRAFT_VERSION=26.2 \
 npm run minecraft:start
 ```
 

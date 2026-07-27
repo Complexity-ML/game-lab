@@ -32,7 +32,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Adapte
     minecraftPort: port(environment.MINECRAFT_PORT, 25565, 'MINECRAFT_PORT'),
     username: text(environment.MINECRAFT_USERNAME, 'GAME_LAB_Bot', 40),
     auth,
-    version: environment.MINECRAFT_VERSION?.trim() || undefined,
+    version: environment.MINECRAFT_VERSION?.trim() || '26.2',
     missionObjective: text(environment.GAME_LAB_MISSION_OBJECTIVE, 'Explore the authorized private world safely', 500),
   }
 }
