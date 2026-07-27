@@ -15,7 +15,7 @@ For the local demo:
 npm run bridge:demo
 ```
 
-Then open **Settings → Connections → Local Game Bridge**, keep `http://127.0.0.1:4317`, and select **Save & connect**. In version 1, GAME LAB and the game adapter intentionally run on the same computer. In **Autonomous mission** mode GPT continuously observes, performs one low-risk checkpoint-bound action, waits for its real completion, verifies the changed world and plans the next step. Combat, entity or vehicle interaction, low health, elevated danger and policy changes still require Human Review. Every observation and action receipt is stored as a workspace-scoped SQLite checkpoint. Observation activity records distinguish `safe`, `threat_detected`, `evading`, `acting`, `blocked` and stopped states, with the trigger source, reason, last action, health delta and nearest-hostile evidence.
+Then open **Settings → Connections → Local Game Bridge**, keep `http://127.0.0.1:4317`, and select **Save & connect**. In version 1, GAME LAB and the game adapter intentionally run on the same computer. In **Autonomous mission** mode GPT prepares one bounded plan of up to 20 low-risk actions. The local **GAME LAB Motor** executes those steps in order, captures and validates a fresh checkpoint after every step, and calls GPT again only when the plan completes, becomes blocked or yields to a changed safety state. Combat, entity or vehicle interaction, low health, elevated danger and policy changes still require Human Review. Every observation and action receipt is stored as a workspace-scoped SQLite checkpoint. Observation activity records distinguish `safe`, `threat_detected`, `evading`, `acting`, `blocked` and stopped states, with the trigger source, reason, last action, health delta and nearest-hostile evidence.
 
 ## Minecraft · Mineflayer adapter
 
@@ -53,7 +53,7 @@ Supported governed skills:
 - interact with or attack an entity from the current observation;
 - use the equipped item, wait, or stop immediately.
 
-Actions are serialized, duplicate command IDs are rejected, and a command is accepted only for the most recently observed checkpoint. Autonomous sessions execute at most 96 low-risk actions before pausing for a fresh operator start. The HTTP bridge binds only to `127.0.0.1`; it is not exposed to the LAN or internet.
+Actions are serialized, duplicate command IDs are rejected, and a command is accepted only for the most recently observed checkpoint. Before every motor step, GAME LAB replaces the plan's original checkpoint with the latest locally validated checkpoint. Autonomous sessions execute at most 96 low-risk actions, in plans of at most 20, before pausing for a fresh operator start. The HTTP bridge binds only to `127.0.0.1`; it is not exposed to the LAN or internet.
 
 [![Tests](https://github.com/Complexity-ML/game-lab/actions/workflows/fast-pr.yml/badge.svg)](https://github.com/Complexity-ML/game-lab/actions/workflows/fast-pr.yml)
 [![Tauri Setup](https://github.com/Complexity-ML/game-lab/actions/workflows/setup-preview.yml/badge.svg)](https://github.com/Complexity-ML/game-lab/actions/workflows/setup-preview.yml)

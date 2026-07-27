@@ -17,7 +17,8 @@ describe('autonomy policy', () => {
     expect(instructions.review).toContain('critical/high risk')
     expect(instructions.risk).toContain('every affected player')
     expect(instructions.uncertainty).toContain('return no graph mutation')
-    expect(instructions.gameplay).toContain('observe-act-verify')
+    expect(instructions.gameplay).toContain('GAME LAB Motor')
+    expect(instructions.gameplay).toContain('5 to 20 bounded actions')
   })
 
   it('forces native review only for material changes in frequent mode', () => {

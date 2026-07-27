@@ -28,7 +28,7 @@ export function gameActionRequiresHumanReview(
 ) {
   if (policy.gameplay !== 'autonomous-mission') return true
   if (!autonomousMissionActions.has(action)) return true
-  if (observation.player.health <= 8 || observation.environment.threatLevel === 'high') {
+  if (observation.player.health <= 8 || observation.environment.threatLevel === 'high' || observation.environment.threatLevel === 'medium') {
     return !autonomousEvasionActions.has(action)
   }
   return false

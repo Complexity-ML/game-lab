@@ -253,35 +253,36 @@ function autonomousGameplayError(payload: unknown, actions: ValidatedProposalAct
     ? request.autonomyPolicy as JsonRecord
     : {}
   if (policy.gameplay !== 'autonomous-mission') return 'Gameplay actions require requires_human_review=true and a Human Review card action'
-  if (gameActions.length !== 1) return 'Autonomous mission mode allows exactly one gameplay action per fresh checkpoint'
-  const gameAction = gameActions[0]
-  if (!gameAction.game_action || !autonomousMissionGameActions.has(gameAction.game_action)) {
-    return 'Combat, entity interaction, routes and vehicle actions require Human Review'
-  }
+  if (gameActions.length > 20) return 'GAME LAB Motor plans cannot exceed 20 gameplay actions'
   const runtime = record(request.gameRuntime, 'Agent request gameRuntime')
   const observation = record(runtime.observation, 'Agent request gameRuntime observation')
   const player = record(observation.player, 'Agent request gameRuntime observation player')
   const environment = record(observation.environment, 'Agent request gameRuntime observation environment')
   if (typeof player.health !== 'number') return 'Autonomous gameplay requires valid player health'
-  if ((player.health <= 8 || environment.threatLevel === 'high') && !autonomousEvasionGameActions.has(gameAction.game_action)) {
-    return 'Unsafe player state allows only autonomous movement or stop; other actions require Human Review'
-  }
-  const args = gameAction.game_action_args
-  if (!args) return 'Autonomous gameplay action arguments are missing'
-  if ((args.max_distance ?? 0) > 64) return 'Autonomous mission search distance cannot exceed 64 blocks'
-  if ((args.duration_ms ?? 0) > 10_000) return 'Autonomous mission waits cannot exceed 10 seconds'
-  if ((args.count ?? 0) > 16) return 'Autonomous mission item count cannot exceed 16 per action'
-  if (args.target_x !== null && args.target_y !== null && args.target_z !== null) {
-    const position = record(player.position, 'Agent request gameRuntime observation player position')
-    if (![position.x, position.y, position.z].every((value) => typeof value === 'number' && Number.isFinite(value))) {
-      return 'Autonomous mission requires a valid observed player position'
+  for (const gameAction of gameActions) {
+    if (!gameAction.game_action || !autonomousMissionGameActions.has(gameAction.game_action)) {
+      return 'Combat, entity interaction, routes and vehicle actions require Human Review'
     }
-    const distance = Math.sqrt(
-      (args.target_x - Number(position.x)) ** 2
-      + (args.target_y - Number(position.y)) ** 2
-      + (args.target_z - Number(position.z)) ** 2,
-    )
-    if (distance > 64) return 'Autonomous mission targets must stay within 64 blocks of the fresh observation'
+    if ((player.health <= 8 || environment.threatLevel === 'high' || environment.threatLevel === 'medium') && !autonomousEvasionGameActions.has(gameAction.game_action)) {
+      return 'Unsafe player state allows only autonomous movement or stop; other actions require Human Review'
+    }
+    const args = gameAction.game_action_args
+    if (!args) return 'Autonomous gameplay action arguments are missing'
+    if ((args.max_distance ?? 0) > 64) return 'Autonomous mission search distance cannot exceed 64 blocks'
+    if ((args.duration_ms ?? 0) > 10_000) return 'Autonomous mission waits cannot exceed 10 seconds'
+    if ((args.count ?? 0) > 16) return 'Autonomous mission item count cannot exceed 16 per action'
+    if (args.target_x !== null && args.target_y !== null && args.target_z !== null) {
+      const position = record(player.position, 'Agent request gameRuntime observation player position')
+      if (![position.x, position.y, position.z].every((value) => typeof value === 'number' && Number.isFinite(value))) {
+        return 'Autonomous mission requires a valid observed player position'
+      }
+      const distance = Math.sqrt(
+        (args.target_x - Number(position.x)) ** 2
+        + (args.target_y - Number(position.y)) ** 2
+        + (args.target_z - Number(position.z)) ** 2,
+      )
+      if (distance > 64) return 'Autonomous mission targets must stay within 64 blocks of the fresh observation'
+    }
   }
   return undefined
 }

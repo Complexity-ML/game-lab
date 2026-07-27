@@ -15,10 +15,10 @@ function autonomousController(nodes: PipelineNode[]) {
     data: {
       ...created.data,
       label: 'GAME LAB Controller',
-      description: 'Global private-game policy. It controls the continuous observe-act-verify loop, sensitive-action review, action budget and emergency stop.',
+      description: 'Global private-game policy. GPT plans mission phases while the GAME LAB Motor executes and validates bounded micro-action sequences locally.',
       owner: 'GAME LAB Agent',
       status: 'healthy' as const,
-      rule: 'objective=operate authorized private game | mode=autonomous_mission | loop=observe_act_verify | action_budget=96 | on_review=sensitive_only | on_idle=continue | emergency_stop=required',
+      rule: 'objective=operate authorized private game | mode=autonomous_mission | motor_batch=20 | gpt_checkpoint=plan_boundary | action_budget=96 | on_review=sensitive_only | on_idle=continue | emergency_stop=required',
     },
   }
 }
@@ -32,10 +32,10 @@ function minecraftAgent(nodes: PipelineNode[], context: GameBootstrapContext) {
     data: {
       ...created.data,
       label: observation.gameState?.kind === 'minecraft' ? 'Minecraft Agent' : `${context.status.game ?? 'Game'} Agent`,
-      description: `Autonomous test player connected through ${context.status.game ?? 'the local Game Bridge'}. It continuously observes, executes one checkpoint-bound allowlisted action, verifies the result and plans the next step.`,
+      description: `Autonomous test player connected through ${context.status.game ?? 'the local Game Bridge'}. It executes an ordered allowlisted motor plan, refreshes structured state after every step and asks GPT again only at a plan boundary or safety yield.`,
       owner: 'GAME LAB Agent',
       status: 'healthy' as const,
-      rule: 'environment=private_server | observe=structured_state | act=allowlist | checkpoint=current_observation | emergency_stop=required',
+      rule: 'environment=private_server | observe=each_motor_step | act=allowlist | motor=sequential_20 | checkpoint=rebound_after_each_step | emergency_stop=required',
       agentTelemetry: {
         mode: 'test-player' as const,
         state: observation.mission.completed ? 'idle' as const : 'observing' as const,
@@ -55,11 +55,11 @@ function gameReview(nodes: PipelineNode[]) {
     id: 'game-bridge-review',
     data: {
       ...created.data,
-      label: 'Review sensitive game action',
-      description: 'Low-risk mission actions continue autonomously. A human approves combat, entity or vehicle interaction, low-health recovery and policy changes.',
+      label: 'Review sensitive game plan',
+      description: 'Low-risk motor plans continue autonomously. A human approves combat, entity or vehicle interaction, low-health recovery and policy changes.',
       owner: 'Game Operator',
       status: 'draft' as const,
-      rule: 'checkpoint=sensitive_game_action | approve=one_allowlisted_action | reject=observe_only | timeout=manual',
+      rule: 'checkpoint=sensitive_game_plan | approve=bounded_allowlisted_plan | reject=observe_only | timeout=manual',
     },
   }
 }

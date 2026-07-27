@@ -39,6 +39,10 @@ describe('autonomous gameplay policy', () => {
     })).toBe(false)
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'mine_block', {
       ...observation,
+      environment: { ...observation.environment, threatLevel: 'medium' },
+    })).toBe(true)
+    expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'mine_block', {
+      ...observation,
       environment: { ...observation.environment, threatLevel: 'high' },
     })).toBe(true)
   })

@@ -12,7 +12,8 @@ import { ensureAutonomousSystemCards } from '../domain/autonomous-system'
 import { classifyConnectivityFailure } from '../domain/connectivity'
 import { recordDiagnostic } from '../domain/diagnostics'
 import { autonomousMissionActionBudget, autonomousProposalFingerprint, gameActionRequiresHumanReview, isRecoverableGameActionFailure } from '../domain/game-autonomy'
-import type { GameObservationSource } from '../domain/game-bridge'
+import type { GameObservation, GameObservationSource } from '../domain/game-bridge'
+import { gameMotorCheckpoint, gameMotorMaximumActions, type GameMotorExecutionResult } from '../domain/game-motor'
 import type { IncidentEventInput, IncidentSummary } from '../domain/incidents'
 import { defaultBlankObjective, resolveAgentObjective } from '../domain/agent-objective'
 import { applyProposal, type AgentProposal, type PipelineNode } from '../domain/pipeline'
@@ -120,10 +121,63 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
     }, delayMs)
   }
 
-  const executeGameActions = async (gameActions: NonNullable<AgentProposal['gameActions']>) => {
+  const executeGameActions = async (
+    gameActions: NonNullable<AgentProposal['gameActions']>,
+    expectedPlayerSessionId?: number,
+    initialObservation?: GameObservation,
+  ): Promise<GameMotorExecutionResult> => {
     if (!window.gameLab) throw new Error('Gameplay actions require the Electron Game Bridge')
-    for (const gameAction of gameActions) {
-      recordActivity(`Action queued · ${gameAction.action.replaceAll('_', ' ')} · checkpoint ${gameAction.checkpointId}`)
+    const plan = gameActions.slice(0, gameMotorMaximumActions)
+    let latestObservation = initialObservation
+    let completedActions = 0
+    recordActivity(`GAME LAB Motor started · ${plan.length} bounded action${plan.length === 1 ? '' : 's'} · one GPT planning turn`)
+    for (const [index, plannedAction] of plan.entries()) {
+      if (expectedPlayerSessionId !== undefined
+        && (playerSessionId.current !== expectedPlayerSessionId || autonomousSchedulingBlocked.current)) {
+        return {
+          completed: false,
+          completedActions,
+          interrupted: true,
+          observation: latestObservation,
+          receipt: {
+            commandId: plannedAction.commandId,
+            checkpointId: latestObservation?.checkpointId ?? plannedAction.checkpointId,
+            action: plannedAction.action,
+            status: 'stopped',
+            summary: 'GAME LAB Motor stopped by the operator before the next action',
+            receivedAt: new Date().toISOString(),
+          },
+        }
+      }
+      if (latestObservation) {
+        const checkpoint = gameMotorCheckpoint(latestObservation, plannedAction.action)
+        if (!checkpoint.continue) {
+          recordActivity(`GAME LAB Motor checkpoint · plan interrupted before ${plannedAction.action.replaceAll('_', ' ')} · ${checkpoint.reason}`)
+          return {
+            completed: false,
+            completedActions,
+            interrupted: true,
+            observation: latestObservation,
+            missionCompleted: latestObservation.mission.completed,
+            receipt: {
+              commandId: plannedAction.commandId,
+              checkpointId: latestObservation.checkpointId,
+              action: plannedAction.action,
+              status: 'stopped',
+              summary: checkpoint.reason,
+              receivedAt: new Date().toISOString(),
+            },
+          }
+        }
+      }
+      const gameAction = {
+        ...plannedAction,
+        commandId: `${plannedAction.commandId}-motor-${index + 1}`,
+        checkpointId: latestObservation?.checkpointId ?? plannedAction.checkpointId,
+        requestedAt: new Date().toISOString(),
+      }
+      setActivity(`GAME LAB Motor · action ${index + 1}/${plan.length} · ${gameAction.action.replaceAll('_', ' ')}`)
+      recordActivity(`Motor action ${index + 1}/${plan.length} queued · ${gameAction.action.replaceAll('_', ' ')} · checkpoint ${gameAction.checkpointId}`)
       const receipt = await window.gameLab.executeGameAction(gameAction).catch((error) => ({
         commandId: gameAction.commandId,
         checkpointId: gameAction.checkpointId,
@@ -132,7 +186,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         summary: errorMessage(error, 'Game Bridge action failed'),
         receivedAt: new Date().toISOString(),
       }))
-      recordActivity(`Action ${receipt.status} · ${receipt.action.replaceAll('_', ' ')} · ${receipt.summary}`)
+      recordActivity(`Motor action ${index + 1}/${plan.length} ${receipt.status} · ${receipt.action.replaceAll('_', ' ')} · ${receipt.summary}`)
       setNodes((current) => current.map((node) => node.id === gameAction.agentNodeId
         ? {
             ...node,
@@ -150,14 +204,41 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         : node))
       if (!['accepted', 'completed'].includes(receipt.status)) {
         recordActivity('Defensive safety remains armed · only the operator Stop control can disable combat and retreat reflexes')
-        return { completed: false, receipt }
+        return { completed: false, completedActions, receipt, observation: latestObservation }
       }
-      if (receipt.status === 'completed') {
+      completedActions += 1
+      if (receipt.status === 'completed' && plan.length === 1) {
         notifyToast(receipt.summary, 'success', `${receipt.action.replaceAll('_', ' ')} completed`)
+      }
+      try {
+        latestObservation = await window.gameLab.getGameObservation('post_action')
+        recordActivity(`Motor validation ${index + 1}/${plan.length} · checkpoint ${latestObservation.checkpointId} · health ${latestObservation.player.health} · threat ${latestObservation.environment.threatLevel} · ${latestObservation.activity?.state ?? latestObservation.mission.stage}`)
+      } catch (error) {
+        return {
+          completed: false,
+          completedActions,
+          observation: latestObservation,
+          receipt: {
+            commandId: gameAction.commandId,
+            checkpointId: gameAction.checkpointId,
+            action: gameAction.action,
+            status: 'failed',
+            summary: `Post-action validation failed: ${errorMessage(error, 'Game Bridge observation unavailable')}`,
+            receivedAt: new Date().toISOString(),
+          },
+        }
+      }
+      if (latestObservation.mission.completed) {
+        recordActivity(`GAME LAB Motor completed the mission after ${completedActions}/${plan.length} planned actions`)
+        return { completed: true, completedActions, missionCompleted: true, observation: latestObservation }
       }
     }
     nextObservationSource.current = 'post_action'
-    return { completed: true, receipt: undefined }
+    if (plan.length > 1) {
+      notifyToast(`${completedActions} actions completed and validated locally.`, 'success', 'GAME LAB Motor completed')
+    }
+    recordActivity(`GAME LAB Motor plan completed · ${completedActions}/${plan.length} actions validated · GPT checkpoint ready`)
+    return { completed: true, completedActions, observation: latestObservation }
   }
 
   const waitForGameBridgeRecovery = async (expectedPlayerSessionId: number, attempts = 30) => {
@@ -298,7 +379,8 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       const materialChangeCount = graphChangeCount + (nextProposal.gameActions?.length ?? 0)
       const gameActions = nextProposal.gameActions ?? []
       const autonomousGameplayAllowed = expectedPlayerSessionId !== undefined
-        && gameActions.length === 1
+        && gameActions.length > 0
+        && gameActions.length <= gameMotorMaximumActions
         && gameActions.every((action) => !gameActionRequiresHumanReview(autonomyPolicy, action.action, observation))
         && autonomousActionCount.current + gameActions.length <= autonomousMissionActionBudget
       if (policyForcesProposalReview(autonomyPolicy, materialChangeCount) || (gameActions.length > 0 && !autonomousGameplayAllowed)) {
@@ -326,7 +408,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
           if (autonomousNoProgressCount.current <= 3) {
             setActivity(`No useful action selected · retrying from a fresh checkpoint (${autonomousNoProgressCount.current}/3)`)
             queueAutonomousStep(
-              `The previous turn made no gameplay progress. Read the fresh Minecraft observation and choose exactly one concrete, nearby, low-risk allowlisted action that advances "${observation.mission.objective}". Do not create or update graph cards merely to justify that action.`,
+              `The previous turn made no gameplay progress. Read the fresh Minecraft observation and queue a concrete bounded GAME LAB Motor plan of up to ${gameMotorMaximumActions} nearby, low-risk allowlisted actions that advances "${observation.mission.objective}". Use fewer steps when the evidence cannot safely support a longer sequence. Do not create or update graph cards merely to justify ordinary motor actions.`,
               expectedPlayerSessionId,
               1_200,
             )
@@ -364,9 +446,37 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         }
         await window.gameLab.updateAgentProposalMemoryStatus(proposalFingerprint, 'committed', versionId).catch(() => undefined)
         if (gameActions.length) {
-          setActivity(`${response.model} selected ${gameActions[0].action} · executing autonomous mission action ${autonomousActionCount.current + 1}/${autonomousMissionActionBudget}…`)
-          const execution = await executeGameActions(gameActions)
+          setActivity(`${response.model} planned ${gameActions.length} GAME LAB Motor action${gameActions.length === 1 ? '' : 's'} · executing locally from action ${autonomousActionCount.current + 1}/${autonomousMissionActionBudget}…`)
+          const execution = await executeGameActions(gameActions, expectedPlayerSessionId, observation)
+          if (agentRunId.current !== runId) return
+          autonomousActionCount.current += execution.completedActions
+          if (execution.missionCompleted) {
+            autonomousSchedulingBlocked.current = true
+            setPlayerState('stopped')
+            setActivity(`Mission completed · ${observation.mission.objective} · ${execution.completedActions} motor actions in the final plan`)
+            notifyToast(observation.mission.objective, 'success', 'Mission completed')
+            return
+          }
           if (!execution.completed) {
+            if (execution.interrupted && autonomousSchedulingBlocked.current) {
+              recordActivity(`GAME LAB Motor paused by operator · ${execution.completedActions}/${gameActions.length} actions completed`)
+              setActivity(`Autonomous player paused · motor stopped after ${execution.completedActions}/${gameActions.length} actions`)
+              return
+            }
+            if (execution.interrupted && expectedPlayerSessionId !== undefined
+              && playerSessionId.current === expectedPlayerSessionId
+              && !autonomousSchedulingBlocked.current) {
+              autonomousNoProgressCount.current = execution.completedActions > 0 ? 0 : autonomousNoProgressCount.current + 1
+              const reason = execution.receipt?.summary ?? 'Fresh game state requires replanning'
+              recordActivity(`GAME LAB Motor yielded to GPT · ${execution.completedActions}/${gameActions.length} actions completed · ${reason}`)
+              setActivity(`GAME LAB Motor checkpoint · ${execution.completedActions}/${gameActions.length} actions complete · replanning once`)
+              queueAutonomousStep(
+                `The local GAME LAB Motor completed ${execution.completedActions}/${gameActions.length} planned actions, then yielded safely because: ${reason}. Read the fresh checkpoint and create the next bounded motor plan toward "${observation.mission.objective}". Do not repeat completed steps.`,
+                expectedPlayerSessionId,
+                250,
+              )
+              return
+            }
             const recoverableDisconnect = /not connected|disconnect|reconnect|socket|ended/i.test(execution.receipt?.summary ?? '')
             if (recoverableDisconnect && expectedPlayerSessionId !== undefined) {
               setActivity('Minecraft connection lost · waiting for automatic Game Bridge recovery…')
@@ -393,7 +503,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
                 recordActivity(`Action blocked · ${execution.receipt?.action ?? 'unknown'} · replanning from a fresh 5-block local map (${attempt}/3)`)
                 setActivity(`Minecraft route or target blocked · safe replan ${attempt}/3 from a fresh checkpoint`)
                 queueAutonomousStep(
-                  `The prior "${execution.receipt?.action ?? 'Minecraft'}" action failed safely: ${failureSummary}. Capture a fresh observation, inspect the 5-block localMap, and choose exactly one different safe recovery action. Prefer an alternate reachable coordinate or target. If the bridge rejected an unsupported or non-allowlisted action, do not propose that action again during this session. Do not assume the failed action completed and do not repeat the same stale target unchanged.`,
+                  `The prior GAME LAB Motor action "${execution.receipt?.action ?? 'Minecraft'}" failed safely after ${execution.completedActions}/${gameActions.length} completed steps: ${failureSummary}. Capture a fresh observation, inspect the 5-block localMap, and create a different bounded recovery plan. Prefer alternate reachable coordinates or targets. Do not assume the failed action completed and do not repeat completed or stale targets.`,
                   expectedPlayerSessionId,
                   500,
                 )
@@ -407,20 +517,19 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
             notifyToast(failureSummary, 'error', 'Mission paused')
             return
           }
-          autonomousActionCount.current += gameActions.length
           autonomousNoProgressCount.current = 0
         }
         if (projectTitle === 'Untitled pipeline') setProjectTitle(nextProposal.title.slice(0, 72))
         fitCommittedGraph(nextProposal.addedNodes.map((node) => node.id))
         setActivity(gameActions.length
-          ? `Autonomous action completed · ${gameActions[0].action} · reading the next Minecraft checkpoint`
+          ? `GAME LAB Motor completed · ${gameActions.length} actions validated locally · reading one GPT checkpoint`
           : `Checkpoint committed · ${nextProposal.title} · continuing the autonomous mission`)
         queueAutonomousStep(
           gameActions.length
-            ? `Autonomous mission action "${gameActions[0].action}" completed. Read the changed Minecraft state, verify the result, and choose exactly one next useful low-risk action toward "${observation.mission.objective}".`
-            : `Continue the autonomous private-game mission toward "${observation.mission.objective}" from a fresh checkpoint. Prefer exactly one useful low-risk game action.`,
+            ? `The GAME LAB Motor completed and locally validated ${gameActions.length} actions. Read the changed Minecraft state once, assess progress, and prepare the next bounded 5-to-${gameMotorMaximumActions}-step motor plan toward "${observation.mission.objective}". Use fewer steps if fresh evidence supports fewer.`
+            : `Continue the autonomous private-game mission toward "${observation.mission.objective}" from a fresh checkpoint. Prefer one bounded GAME LAB Motor plan instead of a single micro-action.`,
           expectedPlayerSessionId,
-          gameActions.length ? 900 : 650,
+          gameActions.length ? 300 : 650,
         )
         return
       }
@@ -626,14 +735,21 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       await window.gameLab?.updateAgentProposalMemoryStatus(graphFingerprint(preview.nodes, preview.edges), 'committed', revisionId).catch(() => undefined)
       if (currentProposal.gameActions?.length) {
         const execution = await executeGameActions(currentProposal.gameActions)
+        autonomousActionCount.current += execution.completedActions
+        if (execution.missionCompleted) {
+          autonomousSchedulingBlocked.current = true
+          setPlayerState('stopped')
+          setActivity(`Mission completed · ${execution.completedActions} reviewed motor actions executed`)
+          notifyToast('The reviewed GAME LAB Motor plan completed the mission.', 'success', 'Mission completed')
+          return true
+        }
         if (!execution.completed) {
           setPlayerState('paused')
           autonomousSchedulingBlocked.current = true
-          setActivity(`Game action ${execution.receipt?.action ?? 'unknown'} failed · ${execution.receipt?.summary ?? 'Game Bridge failure'} · player paused`)
+          setActivity(`GAME LAB Motor stopped after ${execution.completedActions}/${currentProposal.gameActions.length} actions · ${execution.receipt?.summary ?? 'Game Bridge failure'} · player paused`)
           notifyToast(execution.receipt?.summary ?? 'The reviewed game action failed.', 'error', 'Game action failed')
           return true
         }
-        autonomousActionCount.current += currentProposal.gameActions.length
       }
       atomicRepairState.current = undefined
       if (projectTitle === 'Untitled pipeline') setProjectTitle(currentProposal.title.slice(0, 72))

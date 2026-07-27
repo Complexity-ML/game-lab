@@ -73,7 +73,7 @@ export const agentToolDefinitions = [
   {
     type: 'function',
     name: 'queue_game_action',
-    description: 'Queue one allowlisted action for an existing Game Agent card against the exact current observation checkpoint. In autonomous-mission mode, one low-risk action may finish without Human Review; combat, entity interaction, routes and vehicles still require review.',
+    description: 'Append one allowlisted step to a bounded GAME LAB Motor plan for an existing Game Agent card. Copy the exact current observation checkpoint on every planned step. In autonomous-mission mode, queue 5 to 20 locally executable low-risk steps when fresh evidence supports them; use fewer when it does not. The host validates fresh state between steps. Combat, entity interaction, routes and vehicles still require review.',
     strict: true,
     parameters: objectSchema({
       node_id: { type: 'string' },
@@ -337,7 +337,7 @@ export class AgentToolSession {
 
   private normalizedRule(kind: ProposalCardKind, value: unknown): string | null {
     const supplied = text(value, 2_000)
-    if (kind === 'control') return supplied ?? 'objective=operate authorized private game | mode=autonomous_mission | loop=observe_act_verify | action_budget=96 | on_review=sensitive_only | on_idle=continue | emergency_stop=required'
+    if (kind === 'control') return supplied ?? 'objective=operate authorized private game | mode=autonomous_mission | motor_batch=20 | gpt_checkpoint=plan_boundary | action_budget=96 | on_review=sensitive_only | on_idle=continue | emergency_stop=required'
     if (kind === 'review') return supplied ?? 'checkpoint=branch | on_approve=resume_next_iteration | on_reject=repair_loop'
     if (kind === 'parallel') return supplied ?? 'max_concurrency=3 | context=branch_only | merge=atomic'
     if (kind === 'explorer') return supplied ?? 'scope=nearby_world | checkpoint=versioned | resume=true'
@@ -611,7 +611,7 @@ export class AgentToolSession {
         return this.result(tool, 'read', `${proposal.actions.length} queued action(s) satisfy the proposal contract`, {
           action_count: proposal.actions.length,
           game_checkpoint_policy: record(record(this.payload).autonomyPolicy).gameplay === 'autonomous-mission'
-            ? 'One low-risk gameplay action may execute per fresh checkpoint; sensitive actions remain behind Human Review.'
+            ? 'Up to 20 low-risk gameplay actions may execute in one GAME LAB Motor plan; the host refreshes and validates the checkpoint after every step, and sensitive actions remain behind Human Review.'
             : 'Every gameplay action must match the fresh Game Bridge checkpoint and remain behind Human Review.',
         })
       }

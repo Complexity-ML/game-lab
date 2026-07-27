@@ -49,7 +49,7 @@ export function autonomyPolicyInstructions(policy: AutonomyPolicy) {
       ? 'When evidence is incomplete or conflicting, report the evidence gap and return no graph mutation.'
       : 'When evidence is incomplete, allow only reversible graph-only low-risk work; never assert a gameplay anomaly without fresh evidence.'
   const gameplay = policy.gameplay === 'autonomous-mission'
-    ? 'Run the private-game mission as a continuous observe-act-verify loop. Queue exactly one fresh-checkpoint action per iteration. Navigation, mining, placing, crafting, equipping, item use, waiting and stopping may execute without per-action review while health and threat remain safe. Defensive movement remains autonomous under attack; combat, entity interaction, vehicles, non-evasive actions during elevated threat or low health, and policy changes require Human Review.'
+    ? 'Run the private-game mission with the GAME LAB Motor. Queue one ordered plan of 5 to 20 bounded actions when fresh evidence supports the whole sequence, or fewer when it does not. The host executes navigation, mining, placing, crafting, equipping, item use, waiting and stopping locally, refreshes structured state after every step, and calls GPT again only when the plan completes or yields. Defensive movement remains autonomous under attack; combat, entity interaction, vehicles, non-evasive actions during elevated threat or low health, and policy changes require Human Review.'
     : 'Require Human Review before every gameplay action.'
   return { review, risk, uncertainty, gameplay }
 }

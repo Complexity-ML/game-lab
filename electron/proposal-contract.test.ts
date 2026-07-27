@@ -83,7 +83,7 @@ describe('strict game proposal contract', () => {
     expect(() => validateProposal(proposal([moveAction]), payload)).toThrow('requires_human_review=true')
   })
 
-  it('allows one nearby low-risk action in autonomous mission mode', () => {
+  it('allows a bounded nearby low-risk motor plan in autonomous mission mode', () => {
     const autonomousPayload = {
       ...payload,
       autonomyPolicy: { gameplay: 'autonomous-mission' },
@@ -97,7 +97,10 @@ describe('strict game proposal contract', () => {
     }
     expect(validateProposal(proposal([moveAction]), autonomousPayload).actions[0]).toMatchObject({ game_action: 'move_to' })
     expect(() => validateProposal(proposal([{ ...moveAction, game_action: 'attack_entity', game_action_args: { ...moveAction.game_action_args, entity_id: 'entity-2' } }]), autonomousPayload)).toThrow('require Human Review')
-    expect(() => validateProposal(proposal([moveAction, { ...moveAction, game_action: 'wait', game_action_args: { ...moveAction.game_action_args, target_x: null, target_y: null, target_z: null, duration_ms: 1000 } }]), autonomousPayload)).toThrow('exactly one')
+    expect(validateProposal(proposal([
+      moveAction,
+      { ...moveAction, game_action: 'wait', game_action_args: { ...moveAction.game_action_args, target_x: null, target_y: null, target_z: null, duration_ms: 1000 } },
+    ]), autonomousPayload).actions).toHaveLength(2)
     expect(() => validateProposal(proposal([{ ...moveAction, game_action_args: { ...moveAction.game_action_args, target_x: 100 } }]), autonomousPayload)).toThrow('within 64 blocks')
     const threatenedPayload = {
       ...autonomousPayload,
@@ -115,6 +118,20 @@ describe('strict game proposal contract', () => {
       game_action: 'mine_block',
       game_action_args: { ...moveAction.game_action_args, block_name: 'oak_log' },
     }]), threatenedPayload)).toThrow('allows only autonomous movement or stop')
+    expect(() => validateProposal(proposal([{
+      ...moveAction,
+      game_action: 'mine_block',
+      game_action_args: { ...moveAction.game_action_args, block_name: 'oak_log' },
+    }]), {
+      ...autonomousPayload,
+      gameRuntime: {
+        ...autonomousPayload.gameRuntime,
+        observation: {
+          ...autonomousPayload.gameRuntime.observation,
+          environment: { threatLevel: 'medium' },
+        },
+      },
+    })).toThrow('allows only autonomous movement or stop')
   })
 
   it('validates game-only World Explorer and Telemetry Query policies', () => {

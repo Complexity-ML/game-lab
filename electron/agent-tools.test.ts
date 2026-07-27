@@ -70,7 +70,7 @@ describe('bounded GAME LAB agent tools', () => {
     ]))
   })
 
-  it('finishes one low-risk action without per-action review in autonomous mission mode', () => {
+  it('finishes a low-risk motor plan without per-action review in autonomous mission mode', () => {
     const session = new AgentToolSession({
       ...payload,
       autonomyPolicy: { gameplay: 'autonomous-mission' },
@@ -104,11 +104,29 @@ describe('bounded GAME LAB agent tools', () => {
       max_distance: 32,
       reason: 'Continue the authorized mission.',
     })).toMatchObject({ ok: true })
-    expect(session.execute('validate_plan', {})).toMatchObject({ ok: true, action_count: 1 })
+    expect(session.execute('queue_game_action', {
+      node_id: 'agent-1',
+      game_action: 'wait',
+      checkpoint_id: 'checkpoint-42',
+      target_x: null,
+      target_y: null,
+      target_z: null,
+      entity_id: null,
+      route_id: null,
+      interaction: null,
+      duration_ms: 250,
+      item_name: null,
+      block_name: null,
+      count: null,
+      face: null,
+      max_distance: null,
+      reason: 'Allow the local motor to validate movement state.',
+    })).toMatchObject({ ok: true })
+    expect(session.execute('validate_plan', {})).toMatchObject({ ok: true, action_count: 2 })
     expect(session.execute('finish_plan', {
       title: 'Continue the mission',
-      summary: 'Move to the observed safe waypoint.',
-      rationale: 'This is one nearby low-risk action.',
+      summary: 'Execute two locally validated motor steps.',
+      rationale: 'Both steps are nearby, bounded and low-risk.',
       requires_human_review: false,
       confidence: 0.95,
       writeback: 'Store the completed action receipt.',
