@@ -94,7 +94,7 @@ export class MinecraftController {
 
   emergencyStop() {
     this.generation += 1
-    this.bot.pathfinder.setGoal(null)
+    this.bot.pathfinder?.setGoal(null)
     this.bot.clearControlStates()
     this.bot.stopDigging()
     this.bot.deactivateItem()
