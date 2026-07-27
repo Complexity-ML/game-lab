@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 export const GAME_BRIDGE_PROTOCOL = 'game-lab.control.v1' as const
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:4317'
 const TIMEOUT_MS = 4_000
+const ACTION_TIMEOUT_MS = 75_000
 const MAX_RESPONSE_BYTES = 256_000
 const actionTypes = new Set([
   'move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle',
@@ -71,11 +72,11 @@ function safeEndpoint(value: unknown) {
   return url.toString().replace(/\/$/, '')
 }
 
-async function jsonRequest(endpoint: string, path: string, init?: RequestInit) {
+async function jsonRequest(endpoint: string, path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS) {
   const response = await fetch(`${endpoint}${path}`, {
     ...init,
     headers: { accept: 'application/json', 'content-type': 'application/json', ...(init?.headers ?? {}) },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   })
   const body = await response.text()
   if (Buffer.byteLength(body, 'utf8') > MAX_RESPONSE_BYTES) throw new Error('Game Bridge response exceeds 256 KB')
@@ -259,7 +260,7 @@ export class GameBridgeClient {
   async execute(value: unknown) {
     const { endpoint } = this.configuration()
     const command = normalizeCommand(value)
-    const response = record(await jsonRequest(endpoint, '/v1/actions', { method: 'POST', body: JSON.stringify(command) }), 'Game action receipt')
+    const response = record(await jsonRequest(endpoint, '/v1/actions', { method: 'POST', body: JSON.stringify(command) }, ACTION_TIMEOUT_MS), 'Game action receipt')
     const status = ['accepted', 'completed', 'rejected', 'failed', 'stopped'].includes(String(response.status)) ? response.status as 'accepted' | 'completed' | 'rejected' | 'failed' | 'stopped' : 'failed'
     const receipt = {
       commandId: command.commandId,

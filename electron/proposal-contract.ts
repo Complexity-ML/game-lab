@@ -53,6 +53,9 @@ const gameActionTypes = new Set<NonNullable<ValidatedProposalAction['game_action
   'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item',
   'wait', 'stop',
 ])
+const autonomousMissionGameActions = new Set<NonNullable<ValidatedProposalAction['game_action']>>([
+  'move_to', 'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'use_item', 'wait', 'stop',
+])
 const cardNames: Record<ProposalCardKind, string> = { control: 'GAME LAB Control', explorer: 'World Explorer', worker: 'Mission Worker', query: 'Telemetry Query', server: 'Game Server', agent: 'Game Agent', source: 'Evidence Source', profile: 'Telemetry Snapshot', analysis: 'Game Analysis', impact: 'Player Impact', risk: 'Operational Risk', patch: 'Server Patch', monitor: 'Live Monitor', parallel: 'Parallel Agents', diagram: 'Incident Diagram', split: 'Split', decision: 'Agent Decision', transform: 'Action Transform', review: 'Human Review', validation: 'Safety Check', output: 'Game Result' }
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const maximumNodes = 400
@@ -241,6 +244,45 @@ function gameActionError(action: NonNullable<ValidatedProposalAction['game_actio
   return undefined
 }
 
+function autonomousGameplayError(payload: unknown, actions: ValidatedProposalAction[]) {
+  const gameActions = actions.filter((action) => action.type === 'game_action')
+  if (!gameActions.length) return undefined
+  const request = record(payload, 'Agent request')
+  const policy = request.autonomyPolicy && typeof request.autonomyPolicy === 'object' && !Array.isArray(request.autonomyPolicy)
+    ? request.autonomyPolicy as JsonRecord
+    : {}
+  if (policy.gameplay !== 'autonomous-mission') return 'Gameplay actions require requires_human_review=true and a Human Review card action'
+  if (gameActions.length !== 1) return 'Autonomous mission mode allows exactly one gameplay action per fresh checkpoint'
+  const gameAction = gameActions[0]
+  if (!gameAction.game_action || !autonomousMissionGameActions.has(gameAction.game_action)) {
+    return 'Combat, entity interaction, routes and vehicle actions require Human Review'
+  }
+  const runtime = record(request.gameRuntime, 'Agent request gameRuntime')
+  const observation = record(runtime.observation, 'Agent request gameRuntime observation')
+  const player = record(observation.player, 'Agent request gameRuntime observation player')
+  const environment = record(observation.environment, 'Agent request gameRuntime observation environment')
+  if (typeof player.health !== 'number' || player.health <= 8) return 'Low player health requires Human Review'
+  if (environment.threatLevel === 'high') return 'High environmental threat requires Human Review'
+  const args = gameAction.game_action_args
+  if (!args) return 'Autonomous gameplay action arguments are missing'
+  if ((args.max_distance ?? 0) > 64) return 'Autonomous mission search distance cannot exceed 64 blocks'
+  if ((args.duration_ms ?? 0) > 10_000) return 'Autonomous mission waits cannot exceed 10 seconds'
+  if ((args.count ?? 0) > 16) return 'Autonomous mission item count cannot exceed 16 per action'
+  if (args.target_x !== null && args.target_y !== null && args.target_z !== null) {
+    const position = record(player.position, 'Agent request gameRuntime observation player position')
+    if (![position.x, position.y, position.z].every((value) => typeof value === 'number' && Number.isFinite(value))) {
+      return 'Autonomous mission requires a valid observed player position'
+    }
+    const distance = Math.sqrt(
+      (args.target_x - Number(position.x)) ** 2
+      + (args.target_y - Number(position.y)) ** 2
+      + (args.target_z - Number(position.z)) ** 2,
+    )
+    if (distance > 64) return 'Autonomous mission targets must stay within 64 blocks of the fresh observation'
+  }
+  return undefined
+}
+
 function compactGraph(payload: unknown) {
   const input = record(payload, 'Agent request')
   const graph = record(input.graph, 'Agent request graph')
@@ -407,7 +449,10 @@ export function validateProposal(value: unknown, payload: unknown): ValidatedPro
 
   if (nodeIds.size + aliases.size > maximumNodes || edgeIds.size - removedEdges.size + addedEdgeCount > maximumEdges) throw new Error('Proposal would grow the graph beyond the GAME LAB safety limits')
   const includesReview = actions.some((action) => action.kind === 'review' || (action.type === 'update_card' && Boolean(action.node_id && reviewNodeIds.has(action.node_id))))
-  if (actions.some((action) => action.type === 'game_action') && !proposal.requires_human_review) throw new Error('Gameplay actions require requires_human_review=true and a Human Review card action')
+  if (actions.some((action) => action.type === 'game_action') && !proposal.requires_human_review) {
+    const error = autonomousGameplayError(payload, actions)
+    if (error) throw new Error(error)
+  }
   if (proposal.requires_human_review && !includesReview) throw new Error('Human Review was requested without a Human Review card action')
   if (!proposal.requires_human_review && includesReview) throw new Error('Human Review card actions require requires_human_review=true')
   const request = record(payload, 'Agent request')

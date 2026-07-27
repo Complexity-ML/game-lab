@@ -118,7 +118,7 @@ export function buildAnalysisReport(nodes: PipelineNode[], overview?: RiskImpact
   const limitations = [
     ...(servers.length === 0 ? ['No authorized Game Server card is present, so GAME LAB cannot assert operational state.'] : []),
     ...(telemetryGaps ? [`${telemetryGaps} server or agent card${telemetryGaps === 1 ? '' : 's'} lack usable telemetry.`] : []),
-    ...(!nodes.some((node) => node.data.kind === 'review') ? ['Material server commands and gameplay actions require Human Review.'] : []),
+    ...(!nodes.some((node) => node.data.kind === 'review') ? ['Sensitive gameplay actions and material server commands require Human Review.'] : []),
     'GAME LAB is limited to owned or explicitly authorized private servers.',
   ]
   return { mode: 'game', scope, summary, risks, evidence, decisionFacts, limitations, serverCount: servers.length, agentCount: agents.length, telemetryGaps }

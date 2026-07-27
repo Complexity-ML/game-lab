@@ -70,6 +70,53 @@ describe('bounded GAME LAB agent tools', () => {
     ]))
   })
 
+  it('finishes one low-risk action without per-action review in autonomous mission mode', () => {
+    const session = new AgentToolSession({
+      ...payload,
+      autonomyPolicy: { gameplay: 'autonomous-mission' },
+      gameRuntime: {
+        ...payload.gameRuntime,
+        observation: {
+          player: { health: 20, position: { x: 8, y: 64, z: 20 } },
+          environment: { threatLevel: 'none' },
+        },
+      },
+    })
+    expect(session.execute('list_card_kinds', {})).toMatchObject({
+      ok: true,
+      game_policy: { gameplay_mode: 'autonomous-mission' },
+    })
+    expect(session.execute('queue_game_action', {
+      node_id: 'agent-1',
+      game_action: 'move_to',
+      checkpoint_id: 'checkpoint-42',
+      target_x: 10,
+      target_y: 64,
+      target_z: 20,
+      entity_id: null,
+      route_id: null,
+      interaction: null,
+      duration_ms: null,
+      item_name: null,
+      block_name: null,
+      count: null,
+      face: null,
+      max_distance: 32,
+      reason: 'Continue the authorized mission.',
+    })).toMatchObject({ ok: true })
+    expect(session.execute('validate_plan', {})).toMatchObject({ ok: true, action_count: 1 })
+    expect(session.execute('finish_plan', {
+      title: 'Continue the mission',
+      summary: 'Move to the observed safe waypoint.',
+      rationale: 'This is one nearby low-risk action.',
+      requires_human_review: false,
+      confidence: 0.95,
+      writeback: 'Store the completed action receipt.',
+      evidence: ['checkpoint-42'],
+    })).toMatchObject({ ok: true })
+    expect(session.proposal).toMatchObject({ requires_human_review: false })
+  })
+
   it('rejects stale game checkpoints', () => {
     const session = new AgentToolSession(payload)
     session.execute('add_card', {

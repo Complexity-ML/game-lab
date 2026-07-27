@@ -51,7 +51,7 @@ export function usePipelineVersions({ edges, nodes, proposal, resolveApprovedExe
     return version.id
   }
 
-  const commitAutonomousProposal = (nextProposal: AgentProposal, options: { preservePendingReview?: boolean; executionNodes?: PipelineNode[] } = {}) => {
+  const commitAutonomousProposal = (nextProposal: AgentProposal, options: { preservePendingReview?: boolean; executionNodes?: PipelineNode[]; resolveReview?: boolean } = {}) => {
     // The atomic runner may have advanced cards earlier in the same React
     // turn. Use that in-progress checkpoint instead of the render snapshot so
     // committing a graph diff never erases completed-card cursors.
@@ -66,7 +66,9 @@ export function usePipelineVersions({ edges, nodes, proposal, resolveApprovedExe
       return undefined
     }
     const layouted = layoutProposalGraph(next.nodes, next.edges, nextProposal)
-    const committedNodes = resolveApprovedExecution?.(layouted, next.edges) ?? layouted
+    const committedNodes = options.resolveReview === false
+      ? layouted
+      : resolveApprovedExecution?.(layouted, next.edges) ?? layouted
     const version = createPipelineVersion(committedNodes, next.edges, nextProposal.title, 'agent', nextIssues)
     version.blockingIssues = 0
     version.description = `Autonomous incident correction. Upgrade: ${nextProposal.summary} Why: ${nextProposal.rationale} Incremental diff: +${nextProposal.addedNodes.length} cards, ~${nextProposal.updatedNodes.length} cards, +${nextProposal.addedEdges.length} edges, -${nextProposal.removedEdgeIds.length} edges.`

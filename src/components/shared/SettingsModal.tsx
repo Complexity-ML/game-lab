@@ -349,6 +349,13 @@ export function SettingsModal(props: SettingsModalProps) {
         {activeSection === 'autonomy' && <article className="settings-page">
           <div className="settings-page-heading"><small>AUTONOMY</small><h3>Choose how the agent works alone</h3><p>These policies are persisted locally and included in every autonomous planning turn.</p></div>
           <section className="settings-section autonomy-settings">
+            <div className="settings-section-title"><span><Gamepad2 size={15} /> Gameplay loop</span><small>Private-server mission control</small></div>
+            <div aria-label="Gameplay autonomy" className="autonomy-choice-grid" role="radiogroup">
+              <button aria-checked={autonomyPolicy.gameplay === 'autonomous-mission'} className={autonomyPolicy.gameplay === 'autonomous-mission' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, gameplay: 'autonomous-mission' })} role="radio" type="button"><strong>Autonomous mission</strong><small>GPT observes, performs safe actions, verifies the result and continues until stopped.</small></button>
+              <button aria-checked={autonomyPolicy.gameplay === 'review-each-action'} className={autonomyPolicy.gameplay === 'review-each-action' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, gameplay: 'review-each-action' })} role="radio" type="button"><strong>Review each action</strong><small>Pause before every movement, mining, crafting or interaction.</small></button>
+            </div>
+          </section>
+          <section className="settings-section autonomy-settings">
             <div className="settings-section-title"><span><UserRound size={15} /> Human Review frequency</span><small>Native approval boundary</small></div>
             <div aria-label="Human Review frequency" className="autonomy-choice-grid" role="radiogroup">
               <button aria-checked={autonomyPolicy.humanReview === 'frequent'} className={autonomyPolicy.humanReview === 'frequent' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, humanReview: 'frequent' })} role="radio" type="button"><strong>Frequent</strong><small>Every material graph diff waits for approval.</small></button>
@@ -372,7 +379,7 @@ export function SettingsModal(props: SettingsModalProps) {
               <button aria-checked={autonomyPolicy.uncertainty === 'bounded'} className={autonomyPolicy.uncertainty === 'bounded' ? 'is-active' : ''} onClick={() => onAutonomyPolicyChange({ ...autonomyPolicy, uncertainty: 'bounded' })} role="radio" type="button"><strong>Bounded work</strong><small>Allow reversible graph-only work, never unverified game claims.</small></button>
             </div>
           </section>
-          <p className="settings-note">Game Bridge actions always keep their separate Human Review confirmation, regardless of autonomy level.</p>
+          <p className="settings-note">Autonomous mission still pauses for combat, entity or vehicle interaction, low health, elevated danger and policy changes. Emergency stop remains immediate.</p>
         </article>}
 
         {activeSection === 'workspaces' && <article className="settings-page">

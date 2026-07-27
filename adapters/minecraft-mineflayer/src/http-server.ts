@@ -75,12 +75,20 @@ export function startBridgeServer(config: AdapterConfig, controller: MinecraftCo
           return
         }
         commandIds.add(command.commandId)
-        controller.enqueue(command)
-        json(response, 202, {
-          commandId: command.commandId,
-          status: 'accepted',
-          summary: `${command.action} queued against ${command.checkpointId}`,
-        })
+        try {
+          await controller.enqueue(command)
+          json(response, 200, {
+            commandId: command.commandId,
+            status: 'completed',
+            summary: `${command.action} completed against ${command.checkpointId}`,
+          })
+        } catch (error) {
+          json(response, 200, {
+            commandId: command.commandId,
+            status: 'failed',
+            summary: `${command.action} failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500),
+          })
+        }
         return
       }
       if (request.method === 'POST' && url.pathname === '/v1/stop') {

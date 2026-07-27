@@ -3,19 +3,21 @@ import { autonomyPolicyInstructions, defaultAutonomyPolicy, normalizeAutonomyPol
 
 describe('autonomy policy', () => {
   it('normalizes persisted values without trusting unknown fields', () => {
-    expect(normalizeAutonomyPolicy({ humanReview: 'frequent', riskAnalysis: 'exhaustive', uncertainty: 'bounded' })).toEqual({
+    expect(normalizeAutonomyPolicy({ humanReview: 'frequent', riskAnalysis: 'exhaustive', uncertainty: 'bounded', gameplay: 'review-each-action' })).toEqual({
       humanReview: 'frequent',
       riskAnalysis: 'exhaustive',
       uncertainty: 'bounded',
+      gameplay: 'review-each-action',
     })
     expect(normalizeAutonomyPolicy({ humanReview: 'never', riskAnalysis: 'shallow' })).toEqual(defaultAutonomyPolicy)
   })
 
   it('turns the settings into explicit agent instructions', () => {
-    const instructions = autonomyPolicyInstructions({ humanReview: 'critical-only', riskAnalysis: 'exhaustive', uncertainty: 'no-change' })
+    const instructions = autonomyPolicyInstructions({ humanReview: 'critical-only', riskAnalysis: 'exhaustive', uncertainty: 'no-change', gameplay: 'autonomous-mission' })
     expect(instructions.review).toContain('critical/high risk')
     expect(instructions.risk).toContain('every affected player')
     expect(instructions.uncertainty).toContain('return no graph mutation')
+    expect(instructions.gameplay).toContain('observe-act-verify')
   })
 
   it('forces native review only for material changes in frequent mode', () => {

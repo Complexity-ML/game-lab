@@ -73,7 +73,7 @@ export const agentToolDefinitions = [
   {
     type: 'function',
     name: 'queue_game_action',
-    description: 'Queue one allowlisted action for an existing Game Agent card against the exact current observation checkpoint. A Human Review card must already be queued and finish_plan must require review.',
+    description: 'Queue one allowlisted action for an existing Game Agent card against the exact current observation checkpoint. In autonomous-mission mode, one low-risk action may finish without Human Review; combat, entity interaction, routes and vehicles still require review.',
     strict: true,
     parameters: objectSchema({
       node_id: { type: 'string' },
@@ -337,7 +337,7 @@ export class AgentToolSession {
 
   private normalizedRule(kind: ProposalCardKind, value: unknown): string | null {
     const supplied = text(value, 2_000)
-    if (kind === 'control') return supplied ?? 'objective=maintain reviewed game graph | mode=autonomous | on_review=checkpoint_and_resume | on_idle=monitor'
+    if (kind === 'control') return supplied ?? 'objective=operate authorized private game | mode=autonomous_mission | loop=observe_act_verify | action_budget=96 | on_review=sensitive_only | on_idle=continue | emergency_stop=required'
     if (kind === 'review') return supplied ?? 'checkpoint=branch | on_approve=resume_next_iteration | on_reject=repair_loop'
     if (kind === 'parallel') return supplied ?? 'max_concurrency=3 | context=branch_only | merge=atomic'
     if (kind === 'explorer') return supplied ?? 'scope=nearby_world | checkpoint=versioned | resume=true'
@@ -400,7 +400,9 @@ export class AgentToolSession {
           },
           game_policy: {
             checkpoint_bound_actions: true,
-            review_before_material_action: true,
+            gameplay_mode: record(record(this.payload).autonomyPolicy).gameplay ?? 'review-each-action',
+            one_action_per_autonomous_checkpoint: true,
+            sensitive_actions_require_review: true,
             private_servers_only: true,
           },
         })
@@ -608,7 +610,9 @@ export class AgentToolSession {
         this.validatedActionCount = proposal.actions.length
         return this.result(tool, 'read', `${proposal.actions.length} queued action(s) satisfy the proposal contract`, {
           action_count: proposal.actions.length,
-          game_checkpoint_policy: 'Every gameplay action must match the fresh Game Bridge checkpoint and remain behind Human Review.',
+          game_checkpoint_policy: record(record(this.payload).autonomyPolicy).gameplay === 'autonomous-mission'
+            ? 'One low-risk gameplay action may execute per fresh checkpoint; sensitive actions remain behind Human Review.'
+            : 'Every gameplay action must match the fresh Game Bridge checkpoint and remain behind Human Review.',
         })
       }
       if (tool === 'finish_plan') {

@@ -222,7 +222,7 @@ export function newCard(kind: CardKind, index: number): PipelineNode {
                   : kind === 'diagram'
                     ? 'group=incident | inputs=parallel_diffs | merge=atomic'
                     : kind === 'control'
-                      ? 'objective=play safely | mode=autonomous | on_review=checkpoint_and_resume'
+                      ? 'objective=operate authorized private game | mode=autonomous_mission | loop=observe_act_verify | action_budget=96 | on_review=sensitive_only | on_idle=continue | emergency_stop=required'
                       : kind === 'explorer'
                         ? 'scope=nearby_world | checkpoint=versioned | resume=true'
                         : kind === 'worker'

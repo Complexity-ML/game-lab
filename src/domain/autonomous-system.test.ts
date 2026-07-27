@@ -35,6 +35,18 @@ describe('autonomous game bootstrap', () => {
     const initial = ensureAutonomousSystemCards([], [], { observation, status })
     const resumed = ensureAutonomousSystemCards(initial.added, initial.addedEdges, { observation, status })
     expect(resumed.added).toEqual([])
+    expect(resumed.updated).toEqual([])
     expect(resumed.addedEdges).toEqual([])
+  })
+
+  it('upgrades legacy generated system cards without replacing custom cards', () => {
+    const initial = ensureAutonomousSystemCards([], [], { observation, status })
+    const legacy = initial.added.map((node) => node.id === 'game-bridge-review'
+      ? { ...node, data: { ...node.data, label: 'Review next game action', description: 'Review every action.', rule: 'checkpoint=current_game_observation' } }
+      : node)
+    const resumed = ensureAutonomousSystemCards(legacy, initial.addedEdges, { observation, status })
+    expect(resumed.updated).toHaveLength(1)
+    expect(resumed.review.data.label).toBe('Review sensitive game action')
+    expect(resumed.review.data.description).toContain('Low-risk mission actions continue autonomously')
   })
 })

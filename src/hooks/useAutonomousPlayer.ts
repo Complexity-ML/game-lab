@@ -11,6 +11,7 @@ import { policyForcesProposalReview } from '../domain/autonomy-policy'
 import { ensureAutonomousSystemCards } from '../domain/autonomous-system'
 import { classifyConnectivityFailure } from '../domain/connectivity'
 import { recordDiagnostic } from '../domain/diagnostics'
+import { autonomousMissionActionBudget, autonomousProposalFingerprint, gameActionRequiresHumanReview } from '../domain/game-autonomy'
 import type { IncidentEventInput, IncidentSummary } from '../domain/incidents'
 import { defaultBlankObjective, resolveAgentObjective } from '../domain/agent-objective'
 import { applyProposal, type AgentProposal, type PipelineNode } from '../domain/pipeline'
@@ -29,7 +30,7 @@ interface AutonomousPlayerOptions {
   activeAtomicRun: MutableRef<AtomicPipelineRun | undefined>
   agentRunId: MutableRef<number>
   autonomyPolicy: AutonomyPolicy
-  commitAutonomousProposal(proposal: AgentProposal, options?: { preservePendingReview?: boolean; executionNodes?: PipelineNode[] }): string | undefined
+  commitAutonomousProposal(proposal: AgentProposal, options?: { preservePendingReview?: boolean; executionNodes?: PipelineNode[]; resolveReview?: boolean }): string | undefined
   discardInvalidProposal(blockerIds: string[]): void
   edges: Edge[]
   fitCommittedGraph(nodeIds?: Iterable<string>): void
@@ -89,6 +90,8 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
   const autonomousSchedulingBlocked = useRef(true)
   const proposalApprovalRunning = useRef(false)
   const atomicRepairState = useRef<AtomicRepairState | undefined>(undefined)
+  const autonomousActionCount = useRef(0)
+  const autonomousNoProgressCount = useRef(0)
 
   const queueAutonomousStep = (objective: string, sessionId = playerSessionId.current, delayMs = 650) => {
     if (autonomousSchedulingBlocked.current || playerSessionId.current !== sessionId) return
@@ -104,6 +107,40 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       }
       setAutonomousStepRequest({ objective, sessionId, stepId })
     }, delayMs)
+  }
+
+  const executeGameActions = async (gameActions: NonNullable<AgentProposal['gameActions']>) => {
+    if (!window.gameLab) throw new Error('Gameplay actions require the Electron Game Bridge')
+    for (const gameAction of gameActions) {
+      const receipt = await window.gameLab.executeGameAction(gameAction).catch((error) => ({
+        commandId: gameAction.commandId,
+        checkpointId: gameAction.checkpointId,
+        action: gameAction.action,
+        status: 'failed' as const,
+        summary: errorMessage(error, 'Game Bridge action failed'),
+        receivedAt: new Date().toISOString(),
+      }))
+      setNodes((current) => current.map((node) => node.id === gameAction.agentNodeId
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              agentTelemetry: node.data.agentTelemetry
+                ? {
+                    ...node.data.agentTelemetry,
+                    state: receipt.status === 'accepted' ? 'acting' : receipt.status === 'completed' ? 'observing' : 'blocked',
+                    lastAction: `${receipt.action} · ${receipt.status} · ${receipt.summary}`,
+                  }
+                : node.data.agentTelemetry,
+            },
+          }
+        : node))
+      if (!['accepted', 'completed'].includes(receipt.status)) {
+        await window.gameLab.emergencyStopGameBridge().catch(() => undefined)
+        return { completed: false, receipt }
+      }
+    }
+    return { completed: true, receipt: undefined }
   }
 
   const auditWithAgent = async (requestedObjective = defaultBlankObjective, expectedPlayerSessionId?: number) => {
@@ -154,6 +191,18 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
     try {
       const observation = await window.gameLab.getGameObservation()
       if (agentRunId.current !== runId) return
+      if (expectedPlayerSessionId !== undefined && observation.mission.completed) {
+        autonomousSchedulingBlocked.current = true
+        setPlayerState('stopped')
+        setActivity(`Mission completed · ${observation.mission.objective}`)
+        return
+      }
+      if (expectedPlayerSessionId !== undefined && autonomousActionCount.current >= autonomousMissionActionBudget) {
+        autonomousSchedulingBlocked.current = true
+        setPlayerState('paused')
+        setActivity(`Autonomous mission paused after ${autonomousMissionActionBudget} actions · press Play to authorize a new session`)
+        return
+      }
       const activeModel = activeAiSource === 'chatgpt'
         ? currentChatGPT.selectedModel ?? 'ChatGPT'
         : currentAiStatus.providers[activeAiSource].model
@@ -203,17 +252,25 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       })
       const nextProposal = materializeAiProposal(response, executionNodes, edges)
       nextProposal.runTrace = buildAtomicRunTrace(nodes, atomicRun)
-      const materialChangeCount = nextProposal.addedNodes.length
+      const graphChangeCount = nextProposal.addedNodes.length
         + nextProposal.updatedNodes.length
         + nextProposal.addedEdges.length
         + nextProposal.removedEdgeIds.length
-        + (nextProposal.gameActions?.length ?? 0)
-      if (policyForcesProposalReview(autonomyPolicy, materialChangeCount) || (nextProposal.gameActions?.length ?? 0) > 0) {
+      const materialChangeCount = graphChangeCount + (nextProposal.gameActions?.length ?? 0)
+      const gameActions = nextProposal.gameActions ?? []
+      const autonomousGameplayAllowed = expectedPlayerSessionId !== undefined
+        && gameActions.length === 1
+        && gameActions.every((action) => !gameActionRequiresHumanReview(autonomyPolicy, action.action, observation))
+        && autonomousActionCount.current + gameActions.length <= autonomousMissionActionBudget
+      if (policyForcesProposalReview(autonomyPolicy, materialChangeCount) || (gameActions.length > 0 && !autonomousGameplayAllowed)) {
         nextProposal.requiresHumanReview = true
       }
       repairMonitorWorkBranches(nextProposal, nodes, edges)
       const preview = applyProposal(executionNodes, edges, nextProposal)
-      const proposalFingerprint = graphFingerprint(preview.nodes, preview.edges)
+      const previewGraphFingerprint = graphFingerprint(preview.nodes, preview.edges)
+      const proposalFingerprint = gameActions.length
+        ? autonomousProposalFingerprint(previewGraphFingerprint, gameActions)
+        : previewGraphFingerprint
       const remembered = await window.gameLab.rememberAgentProposal({
         graphFingerprint: proposalFingerprint,
         baseGraphFingerprint: graphFingerprint(executionNodes, edges),
@@ -223,9 +280,25 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         rationale: nextProposal.rationale,
       })
       const equivalentVersion = findEquivalentVersion(preview.nodes, preview.edges, versions)
-      if (remembered.occurrenceCount > 1 || graphsEquivalent(executionNodes, edges, preview.nodes, preview.edges) || equivalentVersion) {
+      if (remembered.occurrenceCount > 1 || (!gameActions.length && (graphsEquivalent(executionNodes, edges, preview.nodes, preview.edges) || equivalentVersion))) {
         await window.gameLab.updateAgentProposalMemoryStatus(proposalFingerprint, 'duplicate', equivalentVersion?.id).catch(() => undefined)
-        setActivity('Checkpoint already covered · graph unchanged · waiting for a fresh game observation')
+        if (expectedPlayerSessionId !== undefined && playerSessionId.current === expectedPlayerSessionId) {
+          autonomousNoProgressCount.current += 1
+          if (autonomousNoProgressCount.current <= 3) {
+            setActivity(`No useful action selected · retrying from a fresh checkpoint (${autonomousNoProgressCount.current}/3)`)
+            queueAutonomousStep(
+              `The previous turn made no gameplay progress. Read the fresh Minecraft observation and choose exactly one concrete, nearby, low-risk allowlisted action that advances "${observation.mission.objective}". Do not create or update graph cards merely to justify that action.`,
+              expectedPlayerSessionId,
+              1_200,
+            )
+          } else {
+            autonomousSchedulingBlocked.current = true
+            setPlayerState('paused')
+            setActivity('Autonomous mission paused after 3 no-progress turns · press Play to start a fresh session')
+          }
+        } else {
+          setActivity('Checkpoint already covered · graph unchanged')
+        }
         return
       }
 
@@ -234,23 +307,48 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         || nextProposal.updatedNodes.some((update) => nodes.find((node) => node.id === update.nodeId)?.data.kind === 'review')
       if (touchesReview) nextProposal.requiresHumanReview = true
       if (autonomousSessionActive && !nextProposal.requiresHumanReview) {
-        const versionId = commitAutonomousProposal(nextProposal, { executionNodes })
-        if (!versionId) {
-          const blockers = atomicTransactionBlockers(validatePipeline(preview.nodes, preview.edges))
-          const repair = planAtomicRepair(atomicRepairState.current, expectedPlayerSessionId, blockers.map((issue) => issue.id))
-          atomicRepairState.current = repair.nextState
-          if (repair.shouldRetry) {
-            queueAutonomousStep(`Repair the rejected private-game graph diff and resolve only these blockers: ${blockers.map((issue) => `${issue.id}: ${issue.detail}`).join(' | ')}`, expectedPlayerSessionId, 1_200)
-            setActivity(`Private-game correction rejected safely · bounded repair 1/${maximumAtomicRepairAttempts} scheduled`)
-          } else {
-            setActivity('Private-game correction stopped safely · graph unchanged')
+        let versionId: string | undefined
+        if (graphChangeCount > 0) {
+          versionId = commitAutonomousProposal(nextProposal, { executionNodes, resolveReview: gameActions.length === 0 })
+          if (!versionId) {
+            const blockers = atomicTransactionBlockers(validatePipeline(preview.nodes, preview.edges))
+            const repair = planAtomicRepair(atomicRepairState.current, expectedPlayerSessionId, blockers.map((issue) => issue.id))
+            atomicRepairState.current = repair.nextState
+            if (repair.shouldRetry) {
+              queueAutonomousStep(`Repair the rejected private-game graph diff and resolve only these blockers: ${blockers.map((issue) => `${issue.id}: ${issue.detail}`).join(' | ')}`, expectedPlayerSessionId, 1_200)
+              setActivity(`Private-game correction rejected safely · bounded repair 1/${maximumAtomicRepairAttempts} scheduled`)
+            } else {
+              setActivity('Private-game correction stopped safely · graph unchanged')
+            }
+            return
           }
-          return
         }
         await window.gameLab.updateAgentProposalMemoryStatus(proposalFingerprint, 'committed', versionId).catch(() => undefined)
+        if (gameActions.length) {
+          setActivity(`${response.model} selected ${gameActions[0].action} · executing autonomous mission action ${autonomousActionCount.current + 1}/${autonomousMissionActionBudget}…`)
+          const execution = await executeGameActions(gameActions)
+          if (!execution.completed) {
+            autonomousSchedulingBlocked.current = true
+            setPlayerState('paused')
+            setActivity(`Autonomous action ${execution.receipt?.action ?? 'unknown'} failed · ${execution.receipt?.summary ?? 'Game Bridge failure'} · mission paused`)
+            notifyToast(execution.receipt?.summary ?? 'The autonomous action failed.', 'error', 'Mission paused')
+            return
+          }
+          autonomousActionCount.current += gameActions.length
+          autonomousNoProgressCount.current = 0
+        }
         if (projectTitle === 'Untitled pipeline') setProjectTitle(nextProposal.title.slice(0, 72))
         fitCommittedGraph(nextProposal.addedNodes.map((node) => node.id))
-        setActivity(`Checkpoint committed · ${nextProposal.title} · waiting for Human Review or fresh observation`)
+        setActivity(gameActions.length
+          ? `Autonomous action completed · ${gameActions[0].action} · reading the next Minecraft checkpoint`
+          : `Checkpoint committed · ${nextProposal.title} · continuing the autonomous mission`)
+        queueAutonomousStep(
+          gameActions.length
+            ? `Autonomous mission action "${gameActions[0].action}" completed. Read the changed Minecraft state, verify the result, and choose exactly one next useful low-risk action toward "${observation.mission.objective}".`
+            : `Continue the autonomous private-game mission toward "${observation.mission.objective}" from a fresh checkpoint. Prefer exactly one useful low-risk game action.`,
+          expectedPlayerSessionId,
+          gameActions.length ? 900 : 650,
+        )
         return
       }
 
@@ -341,15 +439,21 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
     const sessionId = ++playerSessionId.current
     autonomousSchedulingBlocked.current = false
     atomicRepairState.current = undefined
+    autonomousActionCount.current = 0
+    autonomousNoProgressCount.current = 0
     setAutonomousStepRequest(undefined)
     setAutonomousStepScheduled(false)
     setPlayerStarting(true)
     setPlayerState('running')
     const systemCards = ensureAutonomousSystemCards(nodes, edges, { observation, status: bridgeStatus })
-    if (systemCards.added.length || systemCards.addedEdges.length) {
-      if (systemCards.added.length) setNodes((current) => [...current, ...systemCards.added])
+    if (systemCards.added.length || systemCards.updated.length || systemCards.addedEdges.length) {
+      if (systemCards.added.length || systemCards.updated.length) setNodes((current) => {
+        const replacements = new Map(systemCards.updated.map((node) => [node.id, node]))
+        return [...current.map((node) => replacements.get(node.id) ?? node), ...systemCards.added]
+      })
       if (systemCards.addedEdges.length) setEdges((current) => [...current, ...systemCards.addedEdges])
-      setActivity(`${systemCards.added.map((node) => node.data.label).join(' and ')} created · preparing the private-game checkpoint…`)
+      const changedLabels = [...systemCards.added, ...systemCards.updated].map((node) => node.data.label)
+      setActivity(`${changedLabels.join(' and ')} ${systemCards.added.length ? 'prepared' : 'upgraded'} · preparing the private-game checkpoint…`)
       setPlayerStarting(false)
       queueAutonomousStep(
         `Execute the persistent GAME LAB private-game policy as coherent checkpoint-bound iterations: ${systemCards.controller.data.rule}`,
@@ -386,6 +490,8 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
     agentRunId.current += 1
     autonomousStepId.current += 1
     atomicRepairState.current = undefined
+    autonomousActionCount.current = 0
+    autonomousNoProgressCount.current = 0
     setPlayerStarting(false)
     setAutonomousStepScheduled(false)
     setAutonomousStepRequest(undefined)
@@ -445,39 +551,15 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       if (!approveProposal()) return false
       await window.gameLab?.updateAgentProposalMemoryStatus(graphFingerprint(preview.nodes, preview.edges), 'committed', revisionId).catch(() => undefined)
       if (currentProposal.gameActions?.length) {
-        if (!window.gameLab) throw new Error('Approved gameplay actions require the Electron Game Bridge')
-        for (const gameAction of currentProposal.gameActions) {
-          const receipt = await window.gameLab.executeGameAction(gameAction).catch((error) => ({
-            commandId: gameAction.commandId,
-            checkpointId: gameAction.checkpointId,
-            action: gameAction.action,
-            status: 'failed' as const,
-            summary: errorMessage(error, 'Game Bridge action failed'),
-            receivedAt: new Date().toISOString(),
-          }))
-          setNodes((current) => current.map((node) => node.id === gameAction.agentNodeId
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  agentTelemetry: node.data.agentTelemetry
-                    ? {
-                        ...node.data.agentTelemetry,
-                        state: receipt.status === 'accepted' ? 'acting' : receipt.status === 'completed' ? 'observing' : 'blocked',
-                        lastAction: `${receipt.action} · ${receipt.status} · ${receipt.summary}`,
-                      }
-                    : node.data.agentTelemetry,
-                },
-              }
-            : node))
-          if (!['accepted', 'completed'].includes(receipt.status)) {
-            setPlayerState('paused')
-            autonomousSchedulingBlocked.current = true
-            setActivity(`Game action ${receipt.action} ${receipt.status} · ${receipt.summary} · player paused`)
-            notifyToast(receipt.summary, 'error', `Game action ${receipt.status}`)
-            return true
-          }
+        const execution = await executeGameActions(currentProposal.gameActions)
+        if (!execution.completed) {
+          setPlayerState('paused')
+          autonomousSchedulingBlocked.current = true
+          setActivity(`Game action ${execution.receipt?.action ?? 'unknown'} failed · ${execution.receipt?.summary ?? 'Game Bridge failure'} · player paused`)
+          notifyToast(execution.receipt?.summary ?? 'The reviewed game action failed.', 'error', 'Game action failed')
+          return true
         }
+        autonomousActionCount.current += currentProposal.gameActions.length
       }
       atomicRepairState.current = undefined
       if (projectTitle === 'Untitled pipeline') setProjectTitle(currentProposal.title.slice(0, 72))

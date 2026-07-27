@@ -41,7 +41,7 @@ describe('local structured Game Bridge', () => {
           nearbyBlocks: [{ name: 'oak_log', position: { x: 10, y: 64, z: 20 }, distance: 5 }],
         },
       },
-      { status: 'accepted', summary: 'Movement queued' },
+      { status: 'completed', summary: 'Movement completed' },
       { stopped: true, summary: 'Stopped immediately' },
     ]
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(responses.shift()), { status: 200 })))
@@ -58,11 +58,11 @@ describe('local structured Game Bridge', () => {
       checkpointId: observation.checkpointId,
       arguments: { blockName: 'oak_log', maxDistance: 24 },
     })
-    expect(receipt).toMatchObject({ checkpointId: 'checkpoint-1', action: 'mine_block', status: 'accepted' })
+    expect(receipt).toMatchObject({ checkpointId: 'checkpoint-1', action: 'mine_block', status: 'completed' })
     expect(await client.emergencyStop()).toMatchObject({ stopped: true, summary: 'Stopped immediately' })
     expect(checkpoints).toMatchObject([
       { kind: 'observation', checkpointId: 'checkpoint-1', status: 'captured' },
-      { kind: 'action', checkpointId: 'checkpoint-1', action: 'mine_block', status: 'accepted' },
+      { kind: 'action', checkpointId: 'checkpoint-1', action: 'mine_block', status: 'completed' },
     ])
   })
 

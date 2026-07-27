@@ -75,8 +75,7 @@ export class MinecraftController {
     const generation = this.generation
     this.stage = 'acting'
     this.lastAction = `${command.action} queued`
-    this.queue = this.queue
-      .then(async () => {
+    const action = this.queue.then(async () => {
         if (generation !== this.generation) throw new Error('Action cancelled by emergency stop')
         await this.execute(command, generation)
         if (generation === this.generation) {
@@ -84,12 +83,15 @@ export class MinecraftController {
           this.lastAction = `${command.action} completed`
         }
       })
-      .catch((error) => {
-        if (generation === this.generation) {
-          this.stage = 'blocked'
-          this.lastAction = `${command.action} failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500)
-        }
-      })
+    const tracked = action.catch((error) => {
+      if (generation === this.generation) {
+        this.stage = 'blocked'
+        this.lastAction = `${command.action} failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500)
+      }
+      throw error
+    })
+    this.queue = tracked.catch(() => undefined)
+    return tracked
   }
 
   emergencyStop() {

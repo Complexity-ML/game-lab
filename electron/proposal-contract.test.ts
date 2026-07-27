@@ -47,39 +47,58 @@ const addCard = (nodeId: string, kind: string, rule: string | null = null) => ({
   reason: 'Add one bounded game workflow card.',
 })
 
+const moveAction = {
+  type: 'game_action',
+  node_id: 'agent-1',
+  ...nullActionFields,
+  game_action: 'move_to',
+  game_action_args: {
+    target_x: 10,
+    target_y: 64,
+    target_z: 20,
+    entity_id: null,
+    route_id: null,
+    interaction: null,
+    duration_ms: null,
+    item_name: null,
+    block_name: null,
+    count: null,
+    face: null,
+    max_distance: 32,
+  },
+  checkpoint_id: 'checkpoint-42',
+  reason: 'Move to a waypoint present in the current observation.',
+}
+
 describe('strict game proposal contract', () => {
   it('accepts only checkpoint-bound reviewed gameplay actions', () => {
     const review = addCard('review-next-action', 'review')
-    const action = {
-      type: 'game_action',
-      node_id: 'agent-1',
-      ...nullActionFields,
-      game_action: 'move_to',
-      game_action_args: {
-        target_x: 10,
-        target_y: 64,
-        target_z: 20,
-        entity_id: null,
-        route_id: null,
-        interaction: null,
-        duration_ms: null,
-        item_name: null,
-        block_name: null,
-        count: null,
-        face: null,
-        max_distance: 32,
-      },
-      checkpoint_id: 'checkpoint-42',
-      reason: 'Move to a waypoint present in the current observation.',
-    }
 
-    expect(validateProposal(proposal([review, action], true), payload).actions[1]).toMatchObject({
+    expect(validateProposal(proposal([review, moveAction], true), payload).actions[1]).toMatchObject({
       type: 'game_action',
       checkpoint_id: 'checkpoint-42',
       game_action: 'move_to',
     })
-    expect(() => validateProposal(proposal([review, { ...action, checkpoint_id: 'stale' }], true), payload)).toThrow('current connected Game Bridge checkpoint')
-    expect(() => validateProposal(proposal([action]), payload)).toThrow('requires_human_review=true')
+    expect(() => validateProposal(proposal([review, { ...moveAction, checkpoint_id: 'stale' }], true), payload)).toThrow('current connected Game Bridge checkpoint')
+    expect(() => validateProposal(proposal([moveAction]), payload)).toThrow('requires_human_review=true')
+  })
+
+  it('allows one nearby low-risk action in autonomous mission mode', () => {
+    const autonomousPayload = {
+      ...payload,
+      autonomyPolicy: { gameplay: 'autonomous-mission' },
+      gameRuntime: {
+        ...payload.gameRuntime,
+        observation: {
+          player: { health: 20, position: { x: 8, y: 64, z: 20 } },
+          environment: { threatLevel: 'none' },
+        },
+      },
+    }
+    expect(validateProposal(proposal([moveAction]), autonomousPayload).actions[0]).toMatchObject({ game_action: 'move_to' })
+    expect(() => validateProposal(proposal([{ ...moveAction, game_action: 'attack_entity', game_action_args: { ...moveAction.game_action_args, entity_id: 'entity-2' } }]), autonomousPayload)).toThrow('require Human Review')
+    expect(() => validateProposal(proposal([moveAction, { ...moveAction, game_action: 'wait', game_action_args: { ...moveAction.game_action_args, target_x: null, target_y: null, target_z: null, duration_ms: 1000 } }]), autonomousPayload)).toThrow('exactly one')
+    expect(() => validateProposal(proposal([{ ...moveAction, game_action_args: { ...moveAction.game_action_args, target_x: 100 } }]), autonomousPayload)).toThrow('within 64 blocks')
   })
 
   it('validates game-only World Explorer and Telemetry Query policies', () => {
