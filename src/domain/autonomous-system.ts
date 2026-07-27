@@ -1,8 +1,6 @@
 import type { Edge } from '@xyflow/react'
-import type { GameActionCommand, GameActionReceipt, GameBridgeStatus, GameObservation } from './game-bridge'
+import type { GameBridgeStatus, GameObservation } from './game-bridge'
 import { newCard, type PipelineNode } from './pipeline'
-
-export const currentGameActionCardId = 'game-bridge-current-action'
 
 interface GameBootstrapContext {
   observation: GameObservation
@@ -66,60 +64,6 @@ function gameReview(nodes: PipelineNode[]) {
   }
 }
 
-function currentGameAction(nodes: PipelineNode[], agent: PipelineNode, context: GameBootstrapContext) {
-  const created = newCard('profile', nodes.length)
-  return {
-    ...created,
-    id: currentGameActionCardId,
-    position: {
-      x: agent.position.x,
-      y: agent.position.y + 250,
-    },
-    data: {
-      ...created.data,
-      label: 'Current action',
-      description: `Waiting for the next action from ${context.observation.checkpointId}. This card is reused so the graph keeps one readable live action instead of one card per movement.`,
-      owner: 'GAME LAB Agent',
-      status: 'healthy' as const,
-      evidenceRef: context.observation.checkpointId,
-      rule: `action=waiting | status=idle | checkpoint=${context.observation.checkpointId}`,
-      runState: 'idle' as const,
-    },
-  }
-}
-
-function actionLabel(action: GameActionCommand['action']) {
-  return action.replaceAll('_', ' ')
-}
-
-export function updateCurrentGameAction(
-  nodes: PipelineNode[],
-  command: GameActionCommand,
-  receipt?: GameActionReceipt,
-) {
-  const running = !receipt || receipt.status === 'accepted'
-  const failed = receipt && ['failed', 'rejected'].includes(receipt.status)
-  const stopped = receipt?.status === 'stopped'
-  const state: NonNullable<PipelineNode['data']['runState']> = running ? 'running' : failed ? 'failed' : stopped ? 'stopped' : 'completed'
-  const status = failed || stopped ? 'blocked' as const : 'healthy' as const
-  const summary = receipt?.summary
-    ?? `${actionLabel(command.action)} queued against ${command.checkpointId}`
-  return nodes.map((node) => node.id === currentGameActionCardId
-    ? {
-        ...node,
-        data: {
-          ...node.data,
-          description: summary,
-          evidenceRef: command.checkpointId,
-          status,
-          rule: `action=${command.action} | status=${receipt?.status ?? 'running'} | checkpoint=${command.checkpointId}`,
-          runState: state,
-          runSequence: running ? (node.data.runSequence ?? 0) + 1 : node.data.runSequence,
-        },
-      }
-    : node)
-}
-
 export function ensureAutonomousSystemCards(nodes: PipelineNode[], edges: Edge[], context: GameBootstrapContext) {
   let controller = nodes.find((node) => node.id === 'game-lab-controller')
     ?? nodes.find((node) => node.data.kind === 'control' && node.data.controlMode === 'autonomous-player')
@@ -149,12 +93,6 @@ export function ensureAutonomousSystemCards(nodes: PipelineNode[], edges: Edge[]
     }
   }
 
-  let action = nodes.find((node) => node.id === currentGameActionCardId)
-  if (!action) {
-    action = currentGameAction([...nodes, ...added], agent, context)
-    added.push(action)
-  }
-
   let review = nodes.find((node) => node.id === 'game-bridge-review')
     ?? nodes.find((node) => node.data.kind === 'review')
   if (!review) {
@@ -170,14 +108,6 @@ export function ensureAutonomousSystemCards(nodes: PipelineNode[], edges: Edge[]
 
   const allEdges = [...edges]
   const addedEdges: Edge[] = []
-  if (!allEdges.some((edge) => edge.source === agent.id && edge.target === action.id)) {
-    addedEdges.push({
-      id: 'game-bridge-agent-current-action',
-      source: agent.id,
-      target: action.id,
-      type: 'elastic',
-    })
-  }
   if (!allEdges.some((edge) => edge.source === agent.id && edge.target === review.id)) {
     addedEdges.push({
       id: 'game-bridge-agent-review',
@@ -187,5 +117,5 @@ export function ensureAutonomousSystemCards(nodes: PipelineNode[], edges: Edge[]
     })
   }
 
-  return { added, updated, addedEdges, action, agent, controller, review }
+  return { added, updated, addedEdges, agent, controller, review }
 }

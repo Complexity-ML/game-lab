@@ -1,5 +1,5 @@
 import { useEdgesState, useNodesState } from '@xyflow/react'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppFooter } from './components/AppFooter'
 import { AppHeader } from './components/AppHeader'
 import { ProposalReviewModal } from './components/ProposalReviewModal'
@@ -8,7 +8,7 @@ import { Modal } from './components/shared/Modal'
 import type { SettingsSection } from './components/shared/SettingsModal'
 import { WorkspaceRecoveryModal } from './components/shared/WorkspaceRecoveryModal'
 import type { AtomicPipelineRun } from './domain/atomic-execution'
-import { isAgentActionActivity } from './domain/activity'
+import { gameCheckpointActivityMessage, isAgentActionActivity } from './domain/activity'
 import { recordDiagnostic } from './domain/diagnostics'
 import { layoutPipeline } from './domain/layout'
 import { initialEdges, initialNodes, pruneOrphanedCards, type AgentProposal, type PipelineNode } from './domain/pipeline'
@@ -67,12 +67,22 @@ export default function App() {
   const [projectTitle, setProjectTitle] = useState('Untitled pipeline')
   const [activity, setActivity] = useState('Empty workspace · add a card or load an example from Settings')
   const [actionHistory, setActionHistory] = useState<AgentActionLog[]>([])
+  const activitySequence = useRef(0)
   const activeAtomicRun = useRef<AtomicPipelineRun | undefined>(undefined)
   const agentRunId = useRef(0)
   const previousPlayerState = useRef<'stopped' | 'paused' | 'running'>('stopped')
   const riskScrollPosition = useRef(0)
   const resumePlayerAfterReview = useRef(false)
   const resolveAtomicReview = useAtomicReviewResolver(activeAtomicRun)
+  const recordActivity = useCallback((message: string) => {
+    const normalized = message.trim()
+    if (!normalized) return
+    setActionHistory((current) => [{
+      id: `live-${Date.now()}-${++activitySequence.current}`,
+      message: normalized,
+      createdAt: new Date().toISOString(),
+    }, ...current].slice(0, 60))
+  }, [])
 
   const appUpdates = useAppUpdates(setActivity)
   const ai = useAiConnections(setActivity)
@@ -164,6 +174,7 @@ export default function App() {
     pendingVersionId: pipelineVersions.pendingVersionId,
     projectTitle,
     proposal,
+    recordActivity,
     recordPendingReview: pipelineVersions.recordPendingReview,
     rejectProposal: pipelineVersions.rejectProposal,
     resumePlayerAfterReview,
@@ -232,6 +243,24 @@ export default function App() {
       ? current
       : [{ id: `action-${Date.now()}`, message: activity, createdAt: new Date().toISOString() }, ...current].slice(0, 60))
   }, [activity])
+  useEffect(() => {
+    if (!window.gameLab) return
+    void window.gameLab.listGameCheckpoints(60).then((checkpoints) => {
+      setActionHistory((current) => {
+        const known = new Set(current.map((entry) => entry.id))
+        const persisted = checkpoints
+          .filter((checkpoint) => !known.has(`game-${checkpoint.id}`))
+          .map((checkpoint) => ({
+            id: `game-${checkpoint.id}`,
+            message: gameCheckpointActivityMessage(checkpoint),
+            createdAt: checkpoint.createdAt,
+          }))
+        return [...current, ...persisted]
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+          .slice(0, 60)
+      })
+    }).catch(() => undefined)
+  }, [])
   useEffect(() => { window.localStorage.removeItem('game-lab-versions') }, [])
   useEffect(() => {
     if (!window.gameLab) return

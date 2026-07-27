@@ -8,7 +8,7 @@ import { applyAtomicRunState, buildAtomicRunTrace, executePipelineAtomically, ty
 import { maximumAtomicRepairAttempts, planAtomicRepair, type AtomicRepairState } from '../domain/atomic-repair'
 import type { AutonomyPolicy } from '../domain/autonomy-policy'
 import { policyForcesProposalReview } from '../domain/autonomy-policy'
-import { ensureAutonomousSystemCards, updateCurrentGameAction } from '../domain/autonomous-system'
+import { ensureAutonomousSystemCards } from '../domain/autonomous-system'
 import { classifyConnectivityFailure } from '../domain/connectivity'
 import { recordDiagnostic } from '../domain/diagnostics'
 import { autonomousMissionActionBudget, autonomousProposalFingerprint, gameActionRequiresHumanReview } from '../domain/game-autonomy'
@@ -44,6 +44,7 @@ interface AutonomousPlayerOptions {
   projectTitle: string
   proposal?: AgentProposal
   recordPendingReview(proposal: AgentProposal): string
+  recordActivity(message: string): void
   rejectProposal(): void
   resumePlayerAfterReview: MutableRef<boolean>
   reviewAssistant: { busy: boolean; stop(): void }
@@ -77,7 +78,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
   const {
     active, activeAiSource, activeAtomicRun, agentRunId, autonomyPolicy, commitAutonomousProposal,
     discardInvalidProposal, edges, fitCommittedGraph, incidentSummaries, issues, language, logIncident,
-    nodes, pendingVersionId, projectTitle, proposal, recordPendingReview, rejectProposal,
+    nodes, pendingVersionId, projectTitle, proposal, recordActivity, recordPendingReview, rejectProposal,
     resumePlayerAfterReview, reviewAssistant, setActivity, setContextMenu, setEdges, setNodes,
     setProjectTitle, setProposal, setProposalReviewOpen, setSettingsOpen, setSettingsSection,
     versions, approveProposal,
@@ -117,7 +118,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
   const executeGameActions = async (gameActions: NonNullable<AgentProposal['gameActions']>) => {
     if (!window.gameLab) throw new Error('Gameplay actions require the Electron Game Bridge')
     for (const gameAction of gameActions) {
-      setNodes((current) => updateCurrentGameAction(current, gameAction))
+      recordActivity(`Action queued · ${gameAction.action.replaceAll('_', ' ')} · checkpoint ${gameAction.checkpointId}`)
       const receipt = await window.gameLab.executeGameAction(gameAction).catch((error) => ({
         commandId: gameAction.commandId,
         checkpointId: gameAction.checkpointId,
@@ -126,7 +127,8 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
         summary: errorMessage(error, 'Game Bridge action failed'),
         receivedAt: new Date().toISOString(),
       }))
-      setNodes((current) => updateCurrentGameAction(current, gameAction, receipt).map((node) => node.id === gameAction.agentNodeId
+      recordActivity(`Action ${receipt.status} · ${receipt.action.replaceAll('_', ' ')} · ${receipt.summary}`)
+      setNodes((current) => current.map((node) => node.id === gameAction.agentNodeId
         ? {
             ...node,
             data: {
@@ -202,6 +204,7 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
       const observationSource = nextObservationSource.current
       nextObservationSource.current = 'autonomous_loop'
       const observation = await window.gameLab.getGameObservation(observationSource)
+      recordActivity(`Observation captured · checkpoint ${observation.checkpointId} · ${observation.activity?.state ?? observation.mission.stage} · ${observation.activity?.reason ?? observation.mission.objective} · health ${observation.player.health}${observation.activity ? ` · ${observation.activity.hostileCount} hostile` : ''}`)
       if (agentRunId.current !== runId) return
       if (expectedPlayerSessionId !== undefined && observation.mission.completed) {
         autonomousSchedulingBlocked.current = true

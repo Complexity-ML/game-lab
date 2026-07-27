@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GameBridgeStatus, GameObservation } from './game-bridge'
-import { currentGameActionCardId, ensureAutonomousSystemCards, updateCurrentGameAction } from './autonomous-system'
+import { ensureAutonomousSystemCards } from './autonomous-system'
 
 const observation: GameObservation = {
   protocol: 'game-lab.control.v1',
@@ -24,18 +24,11 @@ const status: GameBridgeStatus = {
 }
 
 describe('autonomous game bootstrap', () => {
-  it('starts with the controller, Minecraft agent, reusable action card and Human Review', () => {
+  it('starts with the controller, Minecraft agent and Human Review', () => {
     const system = ensureAutonomousSystemCards([], [], { observation, status })
-    expect(system.added.map((node) => node.data.kind)).toEqual(['control', 'agent', 'profile', 'review'])
+    expect(system.added.map((node) => node.data.kind)).toEqual(['control', 'agent', 'review'])
     expect(system.agent.data.label).toBe('Minecraft Agent')
-    expect(system.action).toMatchObject({
-      id: currentGameActionCardId,
-      data: { label: 'Current action', runState: 'idle' },
-    })
-    expect(system.addedEdges).toEqual(expect.arrayContaining([
-      expect.objectContaining({ source: 'game-bridge-agent', target: currentGameActionCardId }),
-      expect.objectContaining({ source: 'game-bridge-agent', target: 'game-bridge-review' }),
-    ]))
+    expect(system.addedEdges).toEqual([expect.objectContaining({ source: 'game-bridge-agent', target: 'game-bridge-review' })])
   })
 
   it('does not duplicate existing system cards or edges', () => {
@@ -55,37 +48,5 @@ describe('autonomous game bootstrap', () => {
     expect(resumed.updated).toHaveLength(1)
     expect(resumed.review.data.label).toBe('Review sensitive game action')
     expect(resumed.review.data.description).toContain('Low-risk mission actions continue autonomously')
-  })
-
-  it('reuses the current action card across queued and completed actions', () => {
-    const system = ensureAutonomousSystemCards([], [], { observation, status })
-    const command = {
-      commandId: 'command-1',
-      checkpointId: 'checkpoint-1',
-      action: 'mine_block' as const,
-      arguments: { blockName: 'oak_log' },
-      requestedAt: '2026-07-27T12:00:01.000Z',
-    }
-    const running = updateCurrentGameAction(system.added, command)
-    expect(running.find((node) => node.id === currentGameActionCardId)?.data).toMatchObject({
-      description: 'mine block queued against checkpoint-1',
-      runState: 'running',
-      runSequence: 1,
-    })
-
-    const completed = updateCurrentGameAction(running, command, {
-      commandId: 'command-1',
-      checkpointId: 'checkpoint-1',
-      action: 'mine_block',
-      status: 'completed',
-      summary: 'mine_block completed against checkpoint-1',
-      receivedAt: '2026-07-27T12:00:02.000Z',
-    })
-    expect(completed.find((node) => node.id === currentGameActionCardId)?.data).toMatchObject({
-      description: 'mine_block completed against checkpoint-1',
-      runState: 'completed',
-      runSequence: 1,
-    })
-    expect(completed).toHaveLength(system.added.length)
   })
 })
