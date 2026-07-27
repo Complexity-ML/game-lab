@@ -1,7 +1,7 @@
 {
   "name": "game-lab-setup",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "scripts": {
     "tauri": "tauri",
     "build:ui": "sass ui/styles.scss ui/styles.css --style=compressed --no-source-map",
