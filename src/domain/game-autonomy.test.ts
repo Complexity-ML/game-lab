@@ -20,6 +20,7 @@ describe('autonomous gameplay policy', () => {
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'mine_block', observation)).toBe(false)
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'craft_item', observation)).toBe(false)
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'jump', observation)).toBe(false)
+    expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'stop', observation)).toBe(true)
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'attack_entity', observation)).toBe(true)
     expect(gameActionRequiresHumanReview(defaultAutonomyPolicy, 'interact', observation)).toBe(true)
   })

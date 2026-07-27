@@ -11,9 +11,8 @@ const autonomousMissionActions = new Set<GameActionCommand['action']>([
   'equip_item',
   'use_item',
   'wait',
-  'stop',
 ])
-const autonomousEvasionActions = new Set<GameActionCommand['action']>(['move_to', 'navigate_to', 'jump', 'stop'])
+const autonomousEvasionActions = new Set<GameActionCommand['action']>(['move_to', 'navigate_to', 'jump'])
 
 export const autonomousMissionActionBudget = 96
 

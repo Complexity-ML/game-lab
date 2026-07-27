@@ -2,7 +2,7 @@ import type { GameActionCommand, GameActionReceipt, GameObservation } from './ga
 
 export const gameMotorMaximumActions = 20
 
-const survivalActions = new Set<GameActionCommand['action']>(['move_to', 'navigate_to', 'jump', 'stop'])
+const survivalActions = new Set<GameActionCommand['action']>(['move_to', 'navigate_to', 'jump'])
 
 export type GameMotorPlanStatus = 'running' | 'completed' | 'yielded' | 'paused' | 'stopped' | 'failed'
 export type GameMotorStepStatus = 'queued' | 'running' | 'completed' | 'blocked' | 'failed' | 'skipped'

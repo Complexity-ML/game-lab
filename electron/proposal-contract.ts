@@ -54,9 +54,9 @@ const gameActionTypes = new Set<NonNullable<ValidatedProposalAction['game_action
   'wait', 'stop',
 ])
 const autonomousMissionGameActions = new Set<NonNullable<ValidatedProposalAction['game_action']>>([
-  'move_to', 'navigate_to', 'jump', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'use_item', 'wait', 'stop',
+  'move_to', 'navigate_to', 'jump', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'use_item', 'wait',
 ])
-const autonomousEvasionGameActions = new Set<NonNullable<ValidatedProposalAction['game_action']>>(['move_to', 'navigate_to', 'jump', 'stop'])
+const autonomousEvasionGameActions = new Set<NonNullable<ValidatedProposalAction['game_action']>>(['move_to', 'navigate_to', 'jump'])
 const cardNames: Record<ProposalCardKind, string> = { control: 'GAME LAB Control', explorer: 'World Explorer', worker: 'Mission Worker', query: 'Telemetry Query', server: 'Game Server', agent: 'Game Agent', source: 'Evidence Source', profile: 'Telemetry Snapshot', analysis: 'Game Analysis', impact: 'Player Impact', risk: 'Operational Risk', patch: 'Server Patch', monitor: 'Live Monitor', parallel: 'Parallel Agents', diagram: 'Incident Diagram', split: 'Split', decision: 'Agent Decision', transform: 'Action Transform', review: 'Human Review', validation: 'Safety Check', output: 'Game Result' }
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const maximumNodes = 400
@@ -260,11 +260,12 @@ function autonomousGameplayError(payload: unknown, actions: ValidatedProposalAct
   const environment = record(observation.environment, 'Agent request gameRuntime observation environment')
   if (typeof player.health !== 'number') return 'Autonomous gameplay requires valid player health'
   for (const gameAction of gameActions) {
+    if (gameAction.game_action === 'stop') return 'Emergency stop is operator-owned and cannot be selected by an autonomous mission'
     if (!gameAction.game_action || !autonomousMissionGameActions.has(gameAction.game_action)) {
       return 'Combat, entity interaction, routes and vehicle actions require Human Review'
     }
     if ((player.health <= 8 || environment.threatLevel === 'high' || environment.threatLevel === 'medium') && !autonomousEvasionGameActions.has(gameAction.game_action)) {
-      return 'Unsafe player state allows only autonomous movement or stop; other actions require Human Review'
+      return 'Unsafe player state allows only autonomous defensive movement; other actions require Human Review'
     }
     const args = gameAction.game_action_args
     if (!args) return 'Autonomous gameplay action arguments are missing'

@@ -73,7 +73,7 @@ export const agentToolDefinitions = [
   {
     type: 'function',
     name: 'queue_game_action',
-    description: 'Append one allowlisted step to a bounded GAME LAB Motor plan for an existing Game Agent card. Copy the exact current observation checkpoint on every planned step. In autonomous-mission mode with stable health and no elevated threat, aim for 12 to 20 locally executable low-risk steps when fresh evidence supports them. Use a shorter dependency-safe plan when danger or unknown post-action state prevents prediction. The host validates fresh state between steps. Combat, entity interaction, routes and vehicles still require review.',
+    description: 'Append one allowlisted step to a bounded GAME LAB Motor plan for an existing Game Agent card. Copy the exact current observation checkpoint on every planned step. In autonomous-mission mode with stable health and no elevated threat, aim for 12 to 20 locally executable low-risk steps when fresh evidence supports them. Use a shorter dependency-safe plan when danger or unknown post-action state prevents prediction. Emergency stop is operator-owned and must never be queued autonomously. The host validates fresh state between steps. Combat, entity interaction, routes and vehicles still require review.',
     strict: true,
     parameters: objectSchema({
       node_id: { type: 'string' },
