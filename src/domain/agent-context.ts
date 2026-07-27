@@ -202,6 +202,7 @@ export function buildPipelineAgentRequest(input: AgentContextInput & {
       "Never target public servers, bypass anti-cheat, expose private player data or invent telemetry",
       "Keep Game Agent actions allowlisted and preserve an immediate emergency stop",
       "Queue a gameplay action only through queue_game_action, only when gameRuntime.connected is true, and copy its exact checkpointId",
+      "For Minecraft, use only the structured inventory, nearbyBlocks and entity IDs in gameRuntime; never invent a block, recipe, item or coordinate",
       "Require Human Review, rollback and fresh post-condition validation for material server commands or agent-policy promotion",
       "Reuse versioned telemetry and replay evidence instead of rebuilding completed cards",
       "A Live Monitor feedback edge connects only Output to Monitor and starts a new bounded iteration",

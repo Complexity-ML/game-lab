@@ -4,7 +4,11 @@ export const GAME_BRIDGE_PROTOCOL = 'game-lab.control.v1' as const
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:4317'
 const TIMEOUT_MS = 4_000
 const MAX_RESPONSE_BYTES = 256_000
-const actionTypes = new Set(['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'wait', 'stop'])
+const actionTypes = new Set([
+  'move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle',
+  'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item',
+  'wait', 'stop',
+])
 
 type SettingsStore = {
   load(key: string): string | null
@@ -112,6 +116,40 @@ function normalizeObservation(value: unknown) {
       state: typeof item.state === 'string' ? item.state.trim().slice(0, 120) : undefined,
     }
   }) : []
+  const rawGameState = input.gameState && typeof input.gameState === 'object' && !Array.isArray(input.gameState)
+    ? input.gameState as JsonRecord
+    : undefined
+  const gameState = rawGameState?.kind === 'minecraft'
+    ? {
+        kind: 'minecraft' as const,
+        version: boundedText(rawGameState.version, 'Minecraft version', 40, 'unknown'),
+        dimension: boundedText(rawGameState.dimension, 'Minecraft dimension', 80, 'unknown'),
+        food: boundedNumber(rawGameState.food, 'Minecraft food', 0, 20),
+        saturation: boundedNumber(rawGameState.saturation, 'Minecraft saturation', 0, 20),
+        experienceLevel: boundedNumber(rawGameState.experienceLevel, 'Minecraft experience level', 0, 1_000_000),
+        inventory: Array.isArray(rawGameState.inventory) ? rawGameState.inventory.slice(0, 46).map((entry, index) => {
+          const item = record(entry, `Minecraft inventory item ${index + 1}`)
+          return {
+            name: boundedText(item.name, `Minecraft inventory item ${index + 1} name`, 100),
+            count: boundedNumber(item.count, `Minecraft inventory item ${index + 1} count`, 0, 99_999),
+            slot: boundedNumber(item.slot, `Minecraft inventory item ${index + 1} slot`, -1, 255),
+          }
+        }) : [],
+        nearbyBlocks: Array.isArray(rawGameState.nearbyBlocks) ? rawGameState.nearbyBlocks.slice(0, 64).map((entry, index) => {
+          const block = record(entry, `Minecraft nearby block ${index + 1}`)
+          const blockPosition = record(block.position, `Minecraft nearby block ${index + 1} position`)
+          return {
+            name: boundedText(block.name, `Minecraft nearby block ${index + 1} name`, 100),
+            position: {
+              x: boundedNumber(blockPosition.x, `Minecraft nearby block ${index + 1} x`, -30_000_000, 30_000_000),
+              y: boundedNumber(blockPosition.y, `Minecraft nearby block ${index + 1} y`, -2_048, 2_048),
+              z: boundedNumber(blockPosition.z, `Minecraft nearby block ${index + 1} z`, -30_000_000, 30_000_000),
+            },
+            distance: boundedNumber(block.distance, `Minecraft nearby block ${index + 1} distance`, 0, 256),
+          }
+        }) : [],
+      }
+    : undefined
   return {
     protocol: GAME_BRIDGE_PROTOCOL,
     observationId: optionalIdentifier(input.observationId, 'Observation ID') ?? `observation-${randomUUID()}`,
@@ -143,6 +181,7 @@ function normalizeObservation(value: unknown) {
       threatLevel,
     },
     nearby,
+    ...(gameState ? { gameState } : {}),
   }
 }
 
@@ -165,6 +204,11 @@ function normalizeCommand(value: unknown) {
       routeId: optionalIdentifier(args.routeId, 'routeId'),
       interaction: typeof args.interaction === 'string' ? args.interaction.trim().slice(0, 120) : undefined,
       durationMs: optionalBoundedNumber(args.durationMs, 'durationMs', 0, 60_000),
+      itemName: optionalIdentifier(args.itemName, 'itemName'),
+      blockName: optionalIdentifier(args.blockName, 'blockName'),
+      count: optionalBoundedNumber(args.count, 'count', 1, 64),
+      face: ['up', 'down', 'north', 'south', 'east', 'west'].includes(String(args.face)) ? args.face as 'up' | 'down' | 'north' | 'south' | 'east' | 'west' : undefined,
+      maxDistance: optionalBoundedNumber(args.maxDistance, 'maxDistance', 1, 128),
     },
     requestedAt: new Date().toISOString(),
   }

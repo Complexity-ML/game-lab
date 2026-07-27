@@ -14,7 +14,7 @@ export interface ValidatedProposalAction {
   source: string | null
   target: string | null
   source_handle: string | null
-  game_action: 'move_to' | 'follow_route' | 'interact' | 'enter_vehicle' | 'exit_vehicle' | 'wait' | 'stop' | null
+  game_action: 'move_to' | 'follow_route' | 'interact' | 'enter_vehicle' | 'exit_vehicle' | 'navigate_to' | 'mine_block' | 'place_block' | 'craft_item' | 'equip_item' | 'attack_entity' | 'use_item' | 'wait' | 'stop' | null
   game_action_args: {
     target_x: number | null
     target_y: number | null
@@ -23,6 +23,11 @@ export interface ValidatedProposalAction {
     route_id: string | null
     interaction: string | null
     duration_ms: number | null
+    item_name: string | null
+    block_name: string | null
+    count: number | null
+    face: 'up' | 'down' | 'north' | 'south' | 'east' | 'west' | null
+    max_distance: number | null
   } | null
   checkpoint_id: string | null
   reason: string
@@ -43,7 +48,11 @@ const rootKeys = ['title', 'summary', 'rationale', 'requires_human_review', 'con
 const actionKeys = ['type', 'node_id', 'kind', 'label', 'description', 'owner', 'rule', 'source', 'target', 'source_handle', 'game_action', 'game_action_args', 'checkpoint_id', 'reason'] as const
 const kinds = new Set<ProposalCardKind>(['control', 'explorer', 'worker', 'query', 'server', 'agent', 'source', 'profile', 'analysis', 'impact', 'risk', 'patch', 'monitor', 'parallel', 'diagram', 'split', 'decision', 'transform', 'review', 'validation', 'output'])
 const actionTypes = new Set<ProposalActionType>(['add_card', 'update_card', 'add_edge', 'remove_edge', 'game_action'])
-const gameActionTypes = new Set<NonNullable<ValidatedProposalAction['game_action']>>(['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'wait', 'stop'])
+const gameActionTypes = new Set<NonNullable<ValidatedProposalAction['game_action']>>([
+  'move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle',
+  'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item',
+  'wait', 'stop',
+])
 const cardNames: Record<ProposalCardKind, string> = { control: 'GAME LAB Control', explorer: 'World Explorer', worker: 'Mission Worker', query: 'Telemetry Query', server: 'Game Server', agent: 'Game Agent', source: 'Evidence Source', profile: 'Telemetry Snapshot', analysis: 'Game Analysis', impact: 'Player Impact', risk: 'Operational Risk', patch: 'Server Patch', monitor: 'Live Monitor', parallel: 'Parallel Agents', diagram: 'Incident Diagram', split: 'Split', decision: 'Agent Decision', transform: 'Action Transform', review: 'Human Review', validation: 'Safety Check', output: 'Game Result' }
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const maximumNodes = 400
@@ -224,7 +233,7 @@ function nullableFiniteNumber(value: unknown, label: string, minimum: number, ma
 function gameActionArguments(value: unknown, label: string): ValidatedProposalAction['game_action_args'] {
   if (value === null) return null
   const input = record(value, label)
-  const keys = ['target_x', 'target_y', 'target_z', 'entity_id', 'route_id', 'interaction', 'duration_ms'] as const
+  const keys = ['target_x', 'target_y', 'target_z', 'entity_id', 'route_id', 'interaction', 'duration_ms', 'item_name', 'block_name', 'count', 'face', 'max_distance'] as const
   exactKeys(input, keys, label)
   return {
     target_x: nullableFiniteNumber(input.target_x, `${label} target_x`, -100_000, 100_000),
@@ -234,7 +243,25 @@ function gameActionArguments(value: unknown, label: string): ValidatedProposalAc
     route_id: identifier(input.route_id, `${label} route_id`, true),
     interaction: text(input.interaction, `${label} interaction`, 120, true),
     duration_ms: nullableFiniteNumber(input.duration_ms, `${label} duration_ms`, 0, 60_000),
+    item_name: identifier(input.item_name, `${label} item_name`, true),
+    block_name: identifier(input.block_name, `${label} block_name`, true),
+    count: nullableFiniteNumber(input.count, `${label} count`, 1, 64),
+    face: input.face === null ? null : ['up', 'down', 'north', 'south', 'east', 'west'].includes(String(input.face)) ? input.face as NonNullable<ValidatedProposalAction['game_action_args']>['face'] : (() => { throw new Error(`${label} face must be null or a cardinal block face`) })(),
+    max_distance: nullableFiniteNumber(input.max_distance, `${label} max_distance`, 1, 128),
   }
+}
+
+function gameActionError(action: NonNullable<ValidatedProposalAction['game_action']>, args: NonNullable<ValidatedProposalAction['game_action_args']>) {
+  const coordinates = args.target_x !== null && args.target_y !== null && args.target_z !== null
+  if (['move_to', 'navigate_to'].includes(action) && !coordinates) return `${action} requires target_x, target_y and target_z`
+  if (action === 'follow_route' && !args.route_id) return 'follow_route requires route_id'
+  if (action === 'mine_block' && !coordinates && !args.block_name) return 'mine_block requires exact coordinates or block_name'
+  if (action === 'place_block' && (!coordinates || !(args.item_name || args.block_name))) return 'place_block requires exact coordinates and item_name or block_name'
+  if (['craft_item', 'equip_item'].includes(action) && !args.item_name) return `${action} requires item_name`
+  if (['attack_entity', 'interact', 'enter_vehicle'].includes(action) && !args.entity_id) return `${action} requires entity_id`
+  if (action === 'wait' && args.duration_ms === null) return 'wait requires duration_ms'
+  if (args.count !== null && !Number.isInteger(args.count)) return 'count must be an integer'
+  return undefined
 }
 
 function compactGraph(payload: unknown) {
@@ -328,6 +355,8 @@ export function validateProposal(value: unknown, payload: unknown): ValidatedPro
     if (action.type === 'game_action') {
       if (!action.node_id || !nodeIds.has(action.node_id) || nodeKinds.get(action.node_id) !== 'agent') throw new Error(`Proposal action ${index + 1} must target an existing Game Agent card`)
       if (!action.game_action || !action.game_action_args || !action.checkpoint_id) throw new Error(`Proposal action ${index + 1} requires an allowlisted game action, bounded arguments and checkpoint_id`)
+      const actionError = gameActionError(action.game_action, action.game_action_args)
+      if (actionError) throw new Error(`Proposal action ${index + 1} · ${actionError}`)
       requireNull(action, ['kind', 'label', 'description', 'owner', 'rule', 'source', 'target', 'source_handle'], index)
       const request = record(payload, 'Agent request')
       const runtime = record(request.gameRuntime, 'Agent request gameRuntime')

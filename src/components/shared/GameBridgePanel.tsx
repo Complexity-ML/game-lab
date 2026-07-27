@@ -92,7 +92,7 @@ export function GameBridgePanel() {
     <label className="settings-field">
       <span>Local adapter endpoint</span>
       <input defaultValue={status.endpoint} placeholder="http://127.0.0.1:4317" ref={endpointRef} type="url" />
-      <small>Protocol <code>game-lab.control.v1</code>. Version 1 accepts only loopback HTTP on the same Windows PC as the game.</small>
+      <small>Protocol <code>game-lab.control.v1</code>. Version 1 accepts only loopback HTTP on the same computer as the game or bot.</small>
     </label>
     <div className="ai-connection-actions">
       <ActionButton disabled={busy || !window.dataLab} icon={<Square size={13} />} onClick={() => void emergencyStop()} variant="ghost">Stop game agent</ActionButton>
@@ -102,7 +102,7 @@ export function GameBridgePanel() {
       <ShieldAlert size={17} />
       <div>
         <strong>{observation.mission.objective}</strong>
-        <small>Checkpoint {observation.checkpointId} · {observation.mission.stage} · {observation.environment.area} · health {observation.player.health} · {observation.nearby.length} nearby entities</small>
+        <small>Checkpoint {observation.checkpointId} · {observation.mission.stage} · {observation.environment.area} · health {observation.player.health} · {observation.nearby.length} nearby entities{observation.gameState?.kind === 'minecraft' ? ` · food ${observation.gameState.food}/20 · ${observation.gameState.inventory.length} inventory stacks · ${observation.gameState.nearbyBlocks.length} nearby blocks` : ''}</small>
       </div>
     </div>}
     {checkpoints.length > 0 && <div className="game-checkpoint-list">

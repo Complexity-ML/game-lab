@@ -84,7 +84,7 @@ export const agentToolDefinitions = [
     strict: true,
     parameters: objectSchema({
       node_id: { type: 'string' },
-      game_action: { type: 'string', enum: ['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'wait', 'stop'] },
+      game_action: { type: 'string', enum: ['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item', 'wait', 'stop'] },
       checkpoint_id: { type: 'string' },
       target_x: { type: ['number', 'null'] },
       target_y: { type: ['number', 'null'] },
@@ -93,6 +93,11 @@ export const agentToolDefinitions = [
       route_id: nullableText,
       interaction: nullableText,
       duration_ms: { type: ['number', 'null'] },
+      item_name: nullableText,
+      block_name: nullableText,
+      count: { type: ['number', 'null'] },
+      face: { type: ['string', 'null'], enum: ['up', 'down', 'north', 'south', 'east', 'west', null] },
+      max_distance: { type: ['number', 'null'] },
       reason: { type: 'string' },
     }),
   },
@@ -549,7 +554,7 @@ export class AgentToolSession {
         const nodeId = requiredText(args.node_id, 'node_id', 120)
         if (this.kindOf(nodeId) !== 'agent') throw new Error('queue_game_action requires an existing Game Agent card')
         const gameAction = requiredText(args.game_action, 'game_action', 40) as ValidatedProposalAction['game_action']
-        if (!['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'wait', 'stop'].includes(gameAction ?? '')) throw new Error('Unknown or unsafe game action')
+        if (!['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item', 'wait', 'stop'].includes(gameAction ?? '')) throw new Error('Unknown or unsafe game action')
         return this.validateCandidate(tool, {
           type: 'game_action',
           node_id: nodeId,
@@ -570,6 +575,11 @@ export class AgentToolSession {
             route_id: text(args.route_id, 120),
             interaction: text(args.interaction, 120),
             duration_ms: typeof args.duration_ms === 'number' ? args.duration_ms : null,
+            item_name: text(args.item_name, 120),
+            block_name: text(args.block_name, 120),
+            count: typeof args.count === 'number' ? args.count : null,
+            face: text(args.face, 12) as NonNullable<ValidatedProposalAction['game_action_args']>['face'],
+            max_distance: typeof args.max_distance === 'number' ? args.max_distance : null,
           },
           checkpoint_id: requiredText(args.checkpoint_id, 'checkpoint_id', 120),
           reason: requiredText(args.reason, 'reason', 500),

@@ -631,6 +631,9 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
             }
             datahubEvidence = datahubEvidence.filter((item) => !item.startsWith('Authorized private game server'))
             datahubEvidence.unshift(`Game Bridge checkpoint ${observation.checkpointId}: mission=${observation.mission.objective}; stage=${observation.mission.stage}; area=${observation.environment.area}; health=${observation.player.health}; armor=${observation.player.armor}; speed=${observation.player.speed}; threat=${observation.environment.threatLevel}; nearby=${observation.nearby.length}.`)
+            if (observation.gameState?.kind === 'minecraft') {
+              datahubEvidence.unshift(`Minecraft state: version=${observation.gameState.version}; dimension=${observation.gameState.dimension}; food=${observation.gameState.food}/20; experience_level=${observation.gameState.experienceLevel}; inventory=${observation.gameState.inventory.map((item) => `${item.name}x${item.count}`).join(', ') || 'empty'}; nearby_blocks=${[...new Set(observation.gameState.nearbyBlocks.map((block) => block.name))].slice(0, 24).join(', ') || 'none loaded'}.`)
+            }
           } catch (error) {
             gameRuntime = { connected: false, message: errorMessage(error, 'Game Bridge observation unavailable') }
           }

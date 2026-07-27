@@ -10,6 +10,9 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "bridge:demo": "node examples/game-bridge-demo/server.mjs",
+    "minecraft:build": "npm run build --prefix adapters/minecraft-mineflayer",
+    "minecraft:test": "npm test --prefix adapters/minecraft-mineflayer",
+    "minecraft:start": "npm start --prefix adapters/minecraft-mineflayer",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:electron": "tsc -p tsconfig.electron.json",

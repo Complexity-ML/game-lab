@@ -51,6 +51,11 @@ interface AiAction {
     route_id: string | null
     interaction: string | null
     duration_ms: number | null
+    item_name: string | null
+    block_name: string | null
+    count: number | null
+    face: 'up' | 'down' | 'north' | 'south' | 'east' | 'west' | null
+    max_distance: number | null
   } | null
   checkpoint_id?: string | null
   reason: string
@@ -232,6 +237,11 @@ export function materializeAiProposal(response: AiProposalResponse, nodes: Pipel
             ...(action.game_action_args.route_id ? { routeId: action.game_action_args.route_id } : {}),
             ...(action.game_action_args.interaction ? { interaction: action.game_action_args.interaction } : {}),
             ...(action.game_action_args.duration_ms !== null ? { durationMs: action.game_action_args.duration_ms } : {}),
+            ...(action.game_action_args.item_name ? { itemName: action.game_action_args.item_name } : {}),
+            ...(action.game_action_args.block_name ? { blockName: action.game_action_args.block_name } : {}),
+            ...(action.game_action_args.count !== null ? { count: action.game_action_args.count } : {}),
+            ...(action.game_action_args.face ? { face: action.game_action_args.face } : {}),
+            ...(action.game_action_args.max_distance !== null ? { maxDistance: action.game_action_args.max_distance } : {}),
           },
           requestedAt: new Date().toISOString(),
           reason: text(action.reason, 'GPT queued an allowlisted game action.', 500),

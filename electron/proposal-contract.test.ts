@@ -50,7 +50,7 @@ describe('strict provider proposal contract', () => {
       target: null,
       source_handle: null,
       game_action: 'move_to',
-      game_action_args: { target_x: 10, target_y: 20, target_z: 30, entity_id: null, route_id: null, interaction: null, duration_ms: null },
+      game_action_args: { target_x: 10, target_y: 20, target_z: 30, entity_id: null, route_id: null, interaction: null, duration_ms: null, item_name: null, block_name: null, count: null, face: null, max_distance: null },
       checkpoint_id: 'checkpoint-42',
       reason: 'Move to the visible mission checkpoint.',
     }
@@ -59,6 +59,14 @@ describe('strict provider proposal contract', () => {
     expect(validateProposal(proposal, gamePayload).actions[1]).toMatchObject({ type: 'game_action', checkpoint_id: 'checkpoint-42' })
     expect(() => validateProposal({ ...proposal, actions: [review, { ...gameAction, checkpoint_id: 'stale-checkpoint' }] }, gamePayload)).toThrow('current connected Game Bridge checkpoint')
     expect(() => validateProposal({ ...proposal, requires_human_review: false, actions: [gameAction] }, gamePayload)).toThrow('requires_human_review=true')
+
+    const mineAction = {
+      ...gameAction,
+      game_action: 'mine_block',
+      game_action_args: { ...gameAction.game_action_args, target_x: null, target_y: null, target_z: null, block_name: 'oak_log', max_distance: 24 },
+    }
+    expect(validateProposal({ ...proposal, actions: [review, mineAction] }, gamePayload).actions[1]).toMatchObject({ game_action: 'mine_block', game_action_args: { block_name: 'oak_log' } })
+    expect(() => validateProposal({ ...proposal, actions: [review, { ...mineAction, game_action_args: { ...mineAction.game_action_args, block_name: null } }] }, gamePayload)).toThrow('mine_block requires exact coordinates or block_name')
   })
 
   it('accepts a bounded, complete and internally consistent proposal', () => {

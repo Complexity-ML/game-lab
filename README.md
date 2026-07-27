@@ -15,7 +15,44 @@ For the local demo:
 npm run bridge:demo
 ```
 
-Then open **Settings → Connections → Local Game Bridge**, keep `http://127.0.0.1:4317`, and select **Save & connect**. In version 1, GAME LAB and the game adapter intentionally run on the same Windows PC. Every GPT gameplay action requires Human Review and its observation/action receipt is stored as a workspace-scoped SQLite checkpoint.
+Then open **Settings → Connections → Local Game Bridge**, keep `http://127.0.0.1:4317`, and select **Save & connect**. In version 1, GAME LAB and the game adapter intentionally run on the same computer. Every GPT gameplay action requires Human Review and its observation/action receipt is stored as a workspace-scoped SQLite checkpoint.
+
+## Minecraft · Mineflayer adapter
+
+The production Minecraft adapter lives in `adapters/minecraft-mineflayer`. It connects one governed bot to a Minecraft Java server and exposes inventory, nearby blocks and entities, health, food, experience, dimension and mission state through the existing Game Bridge.
+
+Install and build it once:
+
+```bash
+cd adapters/minecraft-mineflayer
+npm install
+cp .env.example .env
+npm test
+```
+
+The adapter reads environment variables directly. Load the reviewed values from `.env` with your preferred environment manager, or launch it explicitly:
+
+```bash
+GAME_LAB_PRIVATE_SERVER_ACKNOWLEDGED=true \
+MINECRAFT_HOST=127.0.0.1 \
+MINECRAFT_PORT=25565 \
+MINECRAFT_USERNAME=GAME_LAB_Bot \
+MINECRAFT_AUTH=offline \
+npm run minecraft:start
+```
+
+Use `MINECRAFT_AUTH=microsoft` and your Microsoft account name when the authorized server requires online authentication. The adapter refuses to start until `GAME_LAB_PRIVATE_SERVER_ACKNOWLEDGED=true` is set.
+
+Supported governed skills:
+
+- navigate to exact coordinates;
+- mine a verified block by coordinates or bounded nearby search;
+- place an inventory block against an explicit face;
+- craft and equip an available item;
+- interact with or attack an entity from the current observation;
+- use the equipped item, wait, or stop immediately.
+
+Actions are serialized, duplicate command IDs are rejected, and a command is accepted only for the most recently observed checkpoint. The HTTP bridge binds only to `127.0.0.1`; it is not exposed to the LAN or internet.
 
 [![Tests](https://github.com/Complexity-ML/game-lab/actions/workflows/fast-pr.yml/badge.svg)](https://github.com/Complexity-ML/game-lab/actions/workflows/fast-pr.yml)
 [![Tauri Setup](https://github.com/Complexity-ML/game-lab/actions/workflows/setup-preview.yml/badge.svg)](https://github.com/Complexity-ML/game-lab/actions/workflows/setup-preview.yml)

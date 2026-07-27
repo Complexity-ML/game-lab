@@ -1,4 +1,8 @@
-export const gameActionTypes = ['move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle', 'wait', 'stop'] as const
+export const gameActionTypes = [
+  'move_to', 'follow_route', 'interact', 'enter_vehicle', 'exit_vehicle',
+  'navigate_to', 'mine_block', 'place_block', 'craft_item', 'equip_item', 'attack_entity', 'use_item',
+  'wait', 'stop',
+] as const
 
 export type GameActionType = typeof gameActionTypes[number]
 
@@ -10,6 +14,11 @@ export interface GameActionArguments {
   routeId?: string
   interaction?: string
   durationMs?: number
+  itemName?: string
+  blockName?: string
+  count?: number
+  face?: 'up' | 'down' | 'north' | 'south' | 'east' | 'west'
+  maxDistance?: number
 }
 
 export interface GameActionCommand {
@@ -61,6 +70,16 @@ export interface GameObservation {
     distance: number
     state?: string
   }>
+  gameState?: {
+    kind: 'minecraft'
+    version: string
+    dimension: string
+    food: number
+    saturation: number
+    experienceLevel: number
+    inventory: Array<{ name: string; count: number; slot: number }>
+    nearbyBlocks: Array<{ name: string; position: { x: number; y: number; z: number }; distance: number }>
+  }
 }
 
 export interface GameBridgeSettings {

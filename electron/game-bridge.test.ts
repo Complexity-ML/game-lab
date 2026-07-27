@@ -30,6 +30,16 @@ describe('local structured Game Bridge', () => {
         mission: { id: 'mission-1', objective: 'Reach the marker', stage: 'spawned', completed: false },
         environment: { area: 'Private shard', threatLevel: 'none' },
         nearby: [{ id: 'marker-1', kind: 'checkpoint', distance: 12 }],
+        gameState: {
+          kind: 'minecraft',
+          version: '1.21.11',
+          dimension: 'minecraft:overworld',
+          food: 18,
+          saturation: 4,
+          experienceLevel: 3,
+          inventory: [{ name: 'oak_log', count: 4, slot: 9 }],
+          nearbyBlocks: [{ name: 'oak_log', position: { x: 10, y: 64, z: 20 }, distance: 5 }],
+        },
       },
       { status: 'accepted', summary: 'Movement queued' },
       { stopped: true, summary: 'Stopped immediately' },
@@ -41,18 +51,18 @@ describe('local structured Game Bridge', () => {
     )
 
     const observation = await client.observation()
-    expect(observation).toMatchObject({ checkpointId: 'checkpoint-1', mission: { objective: 'Reach the marker' }, nearby: [{ id: 'marker-1' }] })
+    expect(observation).toMatchObject({ checkpointId: 'checkpoint-1', mission: { objective: 'Reach the marker' }, nearby: [{ id: 'marker-1' }], gameState: { kind: 'minecraft', food: 18, inventory: [{ name: 'oak_log', count: 4 }] } })
 
     const receipt = await client.execute({
-      action: 'move_to',
+      action: 'mine_block',
       checkpointId: observation.checkpointId,
-      arguments: { targetX: 10, targetY: 20, targetZ: 30 },
+      arguments: { blockName: 'oak_log', maxDistance: 24 },
     })
-    expect(receipt).toMatchObject({ checkpointId: 'checkpoint-1', action: 'move_to', status: 'accepted' })
+    expect(receipt).toMatchObject({ checkpointId: 'checkpoint-1', action: 'mine_block', status: 'accepted' })
     expect(await client.emergencyStop()).toMatchObject({ stopped: true, summary: 'Stopped immediately' })
     expect(checkpoints).toMatchObject([
       { kind: 'observation', checkpointId: 'checkpoint-1', status: 'captured' },
-      { kind: 'action', checkpointId: 'checkpoint-1', action: 'move_to', status: 'accepted' },
+      { kind: 'action', checkpointId: 'checkpoint-1', action: 'mine_block', status: 'accepted' },
     ])
   })
 
