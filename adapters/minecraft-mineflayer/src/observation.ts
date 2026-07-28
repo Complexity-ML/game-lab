@@ -1,6 +1,6 @@
 import type { Bot } from 'mineflayer'
 import { Vec3 } from 'vec3'
-import { isHostileMob } from './safety.js'
+import { isHostileMob, isRelevantHostile } from './safety.js'
 
 export interface ObservationRuntime {
   checkpointId: string
@@ -43,6 +43,10 @@ const navigationHazards = new Set([
   'soul_campfire', 'soul_fire', 'sweet_berry_bush', 'water', 'wither_rose',
 ])
 const navigationVerticalScanDepth = 10
+
+export function isElevatedNaturalSupport(blockName: string | undefined) {
+  return Boolean(blockName && (/_leaves$/.test(blockName) || /_mushroom_block$/.test(blockName)))
+}
 
 export interface LocalNavigationCell {
   offsetX: number
@@ -110,7 +114,7 @@ export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
   const supportBlock = support?.name
   const surfaceState = support?.boundingBox !== 'block'
     ? 'airborne' as const
-    : /_leaves$/.test(support.name)
+    : isElevatedNaturalSupport(support.name)
       ? 'canopy' as const
       : 'ground' as const
   const entities = Object.values(bot.entities)
@@ -129,7 +133,10 @@ export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
     .sort((left, right) => left.distance - right.distance)
     .slice(0, 32)
   const timeOfDay = bot.time?.timeOfDay ?? 0
-  const hostileEntities = entities.filter((entity) => entity.kind === 'npc' && isHostileMob(entity.state))
+  const hostileEntities = entities.filter((entity) =>
+    entity.kind === 'npc'
+    && isHostileMob(entity.state)
+    && isRelevantHostile(position, entity.position))
   const threatLevel = hostileEntities.some((entity) => entity.distance <= 8)
     ? 'high' as const
     : hostileEntities.some((entity) => entity.distance <= 24)
@@ -144,7 +151,7 @@ export function buildObservation(bot: Bot, runtime: ObservationRuntime) {
       ? 'safe'
       : 'threat_detected'
   const activityReason = activityState === 'safe'
-    ? 'No hostile mob detected within 64 blocks'
+    ? 'No reachable hostile mob detected nearby'
     : activityState === 'threat_detected'
       ? `${hostileEntities.length} hostile mob${hostileEntities.length === 1 ? '' : 's'} visible; nearest ${nearestHostile?.state ?? 'hostile'} at ${nearestHostile?.distance ?? 'unknown'} blocks`
       : runtime.lastAction

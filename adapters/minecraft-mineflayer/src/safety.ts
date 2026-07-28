@@ -20,6 +20,18 @@ export function isHostileMob(name: string | undefined) {
   return hostileMobPattern.test((name ?? '').replace(/[:\s]+/g, '_'))
 }
 
+export function isRelevantHostile(
+  player: WorldPosition,
+  threat: WorldPosition,
+  maximumHorizontalDistance = 24,
+  maximumVerticalDistance = 4,
+) {
+  const horizontalDistance = Math.hypot(player.x - threat.x, player.z - threat.z)
+  const verticalDistance = Math.abs(player.y - threat.y)
+  return Math.hypot(horizontalDistance, verticalDistance) <= 4.5
+    || (horizontalDistance <= maximumHorizontalDistance && verticalDistance <= maximumVerticalDistance)
+}
+
 export interface DefensiveSituation {
   health: number
   hostileCount: number

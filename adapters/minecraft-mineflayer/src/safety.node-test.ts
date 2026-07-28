@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defensiveResponse, defensiveRetreatTarget, isHostileMob, navigationDescentCell, navigationRecoveryCell, reconnectDelay } from './safety.js'
+import { defensiveResponse, defensiveRetreatTarget, isHostileMob, isRelevantHostile, navigationDescentCell, navigationRecoveryCell, reconnectDelay } from './safety.js'
 
 test('recognizes hostile Minecraft mobs without treating players as hostile', () => {
   assert.equal(isHostileMob('zombie'), true)
@@ -8,6 +8,14 @@ test('recognizes hostile Minecraft mobs without treating players as hostile', ()
   assert.equal(isHostileMob('skeleton'), true)
   assert.equal(isHostileMob('player'), false)
   assert.equal(isHostileMob('cow'), false)
+})
+
+test('ignores distant underground mobs while retaining nearby and same-level threats', () => {
+  const player = { x: 201, y: 68, z: -577 }
+  assert.equal(isRelevantHostile(player, { x: 193, y: 62, z: -574 }), false)
+  assert.equal(isRelevantHostile(player, { x: 190, y: 68, z: -577 }), true)
+  assert.equal(isRelevantHostile(player, { x: 201, y: 64, z: -577 }), true)
+  assert.equal(isRelevantHostile(player, { x: 201, y: 30, z: -577 }), false)
 })
 
 test('computes a bounded target directly away from the threat', () => {
