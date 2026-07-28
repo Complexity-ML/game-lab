@@ -614,10 +614,17 @@ export function useAutonomousPlayer(options: AutonomousPlayerOptions) {
               autonomousNoProgressCount.current += 1
               if (autonomousNoProgressCount.current <= 3) {
                 const attempt = autonomousNoProgressCount.current
-                recordActivity(`Action blocked · ${execution.receipt?.action ?? 'unknown'} · replanning from a fresh 8-block local map (${attempt}/3)`)
-                setActivity(`Minecraft route or target blocked · safe replan ${attempt}/3 from a fresh checkpoint`)
+                const missingCraftingMaterial = /crafting motor cannot craft|[,:]\s*\d+ [a-z0-9_]+ missing/i.test(failureSummary)
+                recordActivity(missingCraftingMaterial
+                  ? `Crafting materials missing · collecting before retry (${attempt}/3) · ${failureSummary}`
+                  : `Action blocked · ${execution.receipt?.action ?? 'unknown'} · replanning from a fresh 8-block local map (${attempt}/3)`)
+                setActivity(missingCraftingMaterial
+                  ? `Crafting prerequisites missing · safe collection replan ${attempt}/3`
+                  : `Minecraft route or target blocked · safe replan ${attempt}/3 from a fresh checkpoint`)
                 queueAutonomousStep(
-                  `The prior GAME LAB Motor action "${execution.receipt?.action ?? 'Minecraft'}" failed safely after ${execution.completedActions}/${gameActions.length} completed steps: ${failureSummary}. Capture a fresh observation, inspect the 8-block localMap, and create a different bounded recovery plan. Prefer alternate reachable coordinates or targets. Do not assume the failed action completed and do not repeat completed or stale targets.`,
+                  missingCraftingMaterial
+                    ? `The Crafting Motor cannot yet execute "${execution.receipt?.action ?? 'craft_item'}" because inventory evidence reports missing base material: ${failureSummary}. Capture a fresh observation. Mine and collect only an exact compatible nearby log or other missing base resource first. Do not retry craft_item until the structured inventory proves enough material is available. Do not repeat completed steps.`
+                    : `The prior GAME LAB Motor action "${execution.receipt?.action ?? 'Minecraft'}" failed safely after ${execution.completedActions}/${gameActions.length} completed steps: ${failureSummary}. Capture a fresh observation, inspect the 8-block localMap, and create a different bounded recovery plan. Prefer alternate reachable coordinates or targets. Do not assume the failed action completed and do not repeat completed or stale targets.`,
                   expectedPlayerSessionId,
                   500,
                 )

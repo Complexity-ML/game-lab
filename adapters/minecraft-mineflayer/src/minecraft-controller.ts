@@ -536,11 +536,75 @@ export class MinecraftController {
     return matches.sort((left, right) => left.position.distanceTo(target) - right.position.distanceTo(target))[0]
   }
 
+  private inventoryCounts() {
+    const counts = new Map<string, number>()
+    for (const item of this.bot.inventory.items()) {
+      counts.set(item.name, (counts.get(item.name) ?? 0) + item.count)
+    }
+    return counts
+  }
+
+  private inventoryGains(before: Map<string, number>) {
+    return [...this.inventoryCounts()]
+      .map(([itemName, count]) => ({ itemName, count: count - (before.get(itemName) ?? 0) }))
+      .filter((item) => item.count > 0)
+  }
+
+  private async collectFreshMiningDrop(
+    origin: Vec3,
+    generation: number,
+    knownItemEntityIds: Set<number>,
+    inventoryBefore: Map<string, number>,
+  ) {
+    let drop
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const gains = this.inventoryGains(inventoryBefore)
+      if (gains.length) return gains
+      drop = Object.values(this.bot.entities)
+        .filter((entity) =>
+          !knownItemEntityIds.has(entity.id)
+          && entity.position
+          && `${entity.name ?? entity.displayName ?? entity.type}` === 'item'
+          && entity.position.distanceTo(origin) <= 6)
+        .sort((left, right) =>
+          left.position.distanceTo(this.bot.entity.position) - right.position.distanceTo(this.bot.entity.position))[0]
+      if (drop) break
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    if (!drop || generation !== this.generation) return this.inventoryGains(inventoryBefore)
+    this.updateActivity('acting', `Mining drop detected · collecting item at ${drop.position.x.toFixed(1)},${drop.position.y.toFixed(1)},${drop.position.z.toFixed(1)}`)
+    try {
+      await this.withOperationTimeout(
+        this.bot.pathfinder.goto(new goals.GoalNear(
+          Math.floor(drop.position.x),
+          Math.floor(drop.position.y),
+          Math.floor(drop.position.z),
+          0,
+        )),
+        5_000,
+        'Mined item pickup timed out',
+        () => this.bot.pathfinder.setGoal(null),
+      )
+    } catch {
+      this.bot.pathfinder.setGoal(null)
+    }
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const gains = this.inventoryGains(inventoryBefore)
+      if (gains.length) return gains
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    return this.inventoryGains(inventoryBefore)
+  }
+
   private async mineResolvedBlock(
     block: NonNullable<ReturnType<Bot['blockAt']>>,
     generation: number,
     requireHarvest = true,
   ) {
+    const inventoryBefore = this.inventoryCounts()
+    const knownItemEntityIds = new Set(Object.values(this.bot.entities)
+      .filter((entity) => `${entity.name ?? entity.displayName ?? entity.type}` === 'item')
+      .map((entity) => entity.id))
     const selection = this.bestMiningTool(block, requireHarvest)
     if (selection.item) await this.bot.equip(selection.item, 'hand')
     await this.gotoWithRecovery(block.position, generation, 3, requireHarvest)
@@ -551,7 +615,8 @@ export class MinecraftController {
       `Mining ${block.name} timed out · target may be blocked or stale`,
       () => this.bot.stopDigging(),
     )
-    return selection
+    const gains = await this.collectFreshMiningDrop(block.position, generation, knownItemEntityIds, inventoryBefore)
+    return { ...selection, gains }
   }
 
   private craftingTable() {
@@ -756,6 +821,16 @@ export class MinecraftController {
           count: 1,
           summary: `Cleared ${obstruction.name} obstructing confirmed nearby ${args.blockName}`,
         })
+        for (const gain of obstructionSelection.gains) {
+          microActions.push({
+            id: `mine-event-obstruction-pickup-${gain.itemName}`,
+            kind: 'inventory',
+            status: 'completed',
+            itemName: gain.itemName,
+            count: gain.count,
+            summary: `Collected ${gain.count} ${gain.itemName} after clearing ${obstruction.name}`,
+          })
+        }
         const refreshedTarget = args.blockName ? this.matchingBlockNear(obstruction.position, args.blockName, 3) : undefined
         if (!refreshedTarget) {
           throw new ActionExecutionError(`Cleared ${obstruction.name}, but ${args.blockName} is no longer available nearby`, {
@@ -789,6 +864,14 @@ export class MinecraftController {
         microActions: [...microActions,
           { id: 'mine-event-1', kind: 'tool', status: 'completed', itemName: selection.item?.name, summary: toolSummary },
           { id: 'mine-event-2', kind: 'mine', status: 'completed', itemName: block.name, count: 1, summary: `Mined ${block.name} at ${block.position.x},${block.position.y},${block.position.z}` },
+          ...selection.gains.map((gain, index) => ({
+            id: `mine-event-pickup-${index + 1}`,
+            kind: 'inventory' as const,
+            status: 'completed' as const,
+            itemName: gain.itemName,
+            count: gain.count,
+            summary: `Collected ${gain.count} ${gain.itemName} into inventory`,
+          })),
         ],
       }
     }

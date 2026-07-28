@@ -67,6 +67,7 @@ describe('autonomous gameplay policy', () => {
     expect(isRecoverableGameActionFailure('Pathfinder attempt timed out')).toBe(true)
     expect(isRecoverableGameActionFailure('Action is not in the Minecraft allowlist')).toBe(true)
     expect(isRecoverableGameActionFailure('mine_block failed: Checkpoint mismatch: expected dark_oak_log, found dark_oak_leaves')).toBe(true)
+    expect(isRecoverableGameActionFailure('craft_item failed: Crafting Motor cannot craft 1 wooden_axe: 3 cherry_log missing')).toBe(true)
     expect(isRecoverableGameActionFailure('Minecraft credentials rejected')).toBe(false)
   })
 
